@@ -1050,6 +1050,9 @@ case "${target}" in
   *-*-phoenix*)
     noconfigdirs="$noconfigdirs target-libgloss"
     ;;
+  *-*-redox)
+    noconfigdirs="$noconfigdirs"
+    ;;
   *-*-rtems*)
     noconfigdirs="$noconfigdirs target-libgloss"
     ;;
