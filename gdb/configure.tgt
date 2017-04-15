@@ -740,6 +740,11 @@ x86_64-*-openbsd*)
 			i386-bsd-tdep.o i386-obsd-tdep.o \
 			bsd-uthread.o"
 	;;
+x86_64-*-redox*)
+	# Target: Redox x86-64
+	gdb_target_obs="${amd64_tobjs}"
+	build_gdbserver=no
+	;;
 x86_64-*-rtems*)
 	gdb_target_obs="${amd64_tobjs} ${i386_tobjs} i386-bsd-tdep.o"
 	;;
