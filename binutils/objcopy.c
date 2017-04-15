@@ -1813,7 +1813,7 @@ copy_unknown_object (bfd *ibfd, bfd *obfd)
 
   /* We should at least to be able to read it back when copying an
      unknown object in an archive.  */
-  chmod (bfd_get_filename (obfd), buf.st_mode | S_IRUSR);
+  //chmod (bfd_get_filename (obfd), buf.st_mode | S_IRUSR);
   free (cbuf);
   return TRUE;
 }
@@ -2742,7 +2742,7 @@ copy_archive (bfd *ibfd, bfd *obfd, const char *output_target,
   for (l = list; l != NULL; l = l->next)
     {
       if (l->obfd == NULL)
-	rmdir (l->name);
+	;//rmdir (l->name);
       else
 	{
 	  bfd_close (l->obfd);
@@ -2750,7 +2750,7 @@ copy_archive (bfd *ibfd, bfd *obfd, const char *output_target,
 	}
     }
 
-  rmdir (dir);
+  //rmdir (dir);
 }
 
 static void

@@ -92,6 +92,7 @@ set_times (const char *destination, const struct stat *statbuf)
 {
   int result;
 
+#if 0
   {
 #ifdef HAVE_GOOD_UTIME_H
     struct utimbuf tb;
@@ -120,6 +121,7 @@ set_times (const char *destination, const struct stat *statbuf)
 
   if (result != 0)
     non_fatal (_("%s: cannot set time: %s"), destination, strerror (errno));
+#endif
 }
 
 #ifndef S_ISLNK
@@ -184,9 +186,9 @@ smart_rename (const char *from, const char *to, int preserve_dates ATTRIBUTE_UNU
 		 setuid bit if the chown succeeds, because we don't
 		 want to introduce an unexpected setuid file owned by
 		 the user running objcopy.  */
-	      chmod (to, s.st_mode & 0777);
-	      if (chown (to, s.st_uid, s.st_gid) >= 0)
-		chmod (to, s.st_mode & 07777);
+	      //chmod (to, s.st_mode & 0777);
+	      //if (chown (to, s.st_uid, s.st_gid) >= 0)
+		//chmod (to, s.st_mode & 07777);
 	    }
 	}
       else
