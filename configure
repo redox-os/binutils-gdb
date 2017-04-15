@@ -3915,6 +3915,9 @@ case "${target}" in
   wasm32-*-*)
     noconfigdirs="$noconfigdirs ld"
     ;;
+  *-*-redox)
+    noconfigdirs="$noconfigdirs readline gdb"
+    ;;
 esac
 
 # If we aren't building newlib, then don't build libgloss, since libgloss
