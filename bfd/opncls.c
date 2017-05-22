@@ -676,7 +676,6 @@ bfd_openw (const char *filename, const char *target)
 static inline void
 _maybe_make_executable (bfd * abfd)
 {
-#if 0
   /* If the file was open for writing and is now executable,
      make it so.  */
   if (abfd->direction == write_direction
@@ -698,7 +697,6 @@ _maybe_make_executable (bfd * abfd)
 		  & (buf.st_mode | ((S_IXUSR | S_IXGRP | S_IXOTH) &~ mask))));
 	}
     }
-#endif
 }
 
 /*
