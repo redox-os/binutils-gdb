@@ -1203,6 +1203,9 @@ case "${target}" in
   vax-*-*)
     noconfigdirs="$noconfigdirs target-newlib target-libgloss"
     ;;
+  *-elf-redox)
+    noconfigdirs="$noconfigdirs readline gdb"
+    ;;
 esac
 
 # If we aren't building newlib, then don't build libgloss, since libgloss
