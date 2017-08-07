@@ -1203,7 +1203,7 @@ case "${target}" in
   vax-*-*)
     noconfigdirs="$noconfigdirs target-newlib target-libgloss"
     ;;
-  *-elf-redox)
+  *-*-redox)
     noconfigdirs="$noconfigdirs readline gdb"
     ;;
 esac
