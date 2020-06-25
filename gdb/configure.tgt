@@ -732,6 +732,11 @@ x86_64-*-openbsd*)
 x86_64-*-rtems*)
 	gdb_target_obs="${amd64_tobjs} ${i386_tobjs} i386-bsd-tdep.o"
 	;;
+x86_64-*-redox*)
+	# Target: Redox x86-64
+	gdb_target_obs="${amd64_tobjs}"
+	build_gdbserver=no
+	;;
 xtensa*-*-linux*)
 	# Target: GNU/Linux Xtensa
 	gdb_target_obs="xtensa-linux-tdep.o symfile-mem.o linux-tdep.o"

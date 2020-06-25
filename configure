@@ -3884,7 +3884,7 @@ case "${target}" in
     noconfigdirs="$noconfigdirs ld"
     ;;
   *-*-redox)
-    noconfigdirs="$noconfigdirs readline gdb"
+    noconfigdirs="$noconfigdirs"
     ;;
 esac
 
