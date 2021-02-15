@@ -2409,6 +2409,20 @@ elf_x86_64_tpoff (struct bfd_link_info *info, bfd_vma address)
   return address - static_tls_size - htab->tls_sec->vma;
 }
 
+/* Fill a byte with either the FS or GS segment prefix */
+static void
+fill_segment_prefix_byte (bfd_byte *ptr, bfd_boolean use_gs)
+{
+#define FS_SEGMENT_PREFIX 0x64
+#define GS_SEGMENT_PREFIX 0x65
+
+	if (use_gs) {
+		*ptr = GS_SEGMENT_PREFIX;
+	} else {
+		*ptr = FS_SEGMENT_PREFIX;
+	}
+}
+
 /* Relocate an x86_64 ELF section.  */
 
 static bfd_boolean
@@ -2430,6 +2444,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
   Elf_Internal_Rela *wrel;
   Elf_Internal_Rela *relend;
   unsigned int plt_entry_size;
+	bfd_boolean use_gs = info->use_gs_for_tls;
 
   /* Skip if check_relocs failed.  */
   if (input_section->check_relocs_failed)
@@ -3418,9 +3433,12 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 				 input_bfd);
 			      return FALSE;
 			    }
-			  memcpy (contents + roff - 3,
-				  "\x64\x48\x8b\x04\x25\0\0\0\0\x48\x8d\x80"
-				  "\0\0\0\0\x66\x0f\x1f\x44\0", 22);
+			  memcpy (contents + roff - 2,
+				  "\x48\x8b\x04\x25\0\0\0\0\x48\x8d\x80"
+				  "\0\0\0\0\x66\x0f\x1f\x44\0", 12);
+
+				fill_segment_prefix_byte(contents + roff - 3, use_gs);
+
 			  largepic = 1;
 			}
 		      else
@@ -3428,9 +3446,10 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			  if (roff < 4
 			      || (roff - 4 + 16) > input_section->size)
 			    goto corrupt_input;
-			  memcpy (contents + roff - 4,
-				  "\x64\x48\x8b\x04\x25\0\0\0\0\x48\x8d\x80\0\0\0",
-				  16);
+			  memcpy (contents + roff - 3,
+				  "\x48\x8b\x04\x25\0\0\0\0\x48\x8d\x80\0\0\0",
+				  15);
+				fill_segment_prefix_byte(contents + roff - 4, use_gs);
 			}
 		    }
 		  else
@@ -3438,9 +3457,10 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 		      if (roff < 3
 			  || (roff - 3 + 15) > input_section->size)
 			goto corrupt_input;
-		      memcpy (contents + roff - 3,
-			      "\x64\x8b\x04\x25\0\0\0\0\x48\x8d\x80\0\0\0",
-			      15);
+		      memcpy (contents + roff - 2,
+			      "\x8b\x04\x25\0\0\0\0\x48\x8d\x80\0\0\0",
+			      14);
+					fill_segment_prefix_byte(contents + roff - 3, use_gs);
 		    }
 		  bfd_put_32 (output_bfd,
 			      elf_x86_64_tpoff (info, relocation),
@@ -3775,9 +3795,10 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			  if (roff < 3
 			      || (roff - 3 + 22) > input_section->size)
 			    goto corrupt_input;
-			  memcpy (contents + roff - 3,
-				  "\x64\x48\x8b\x04\x25\0\0\0\0\x48\x03\x05"
-				  "\0\0\0\0\x66\x0f\x1f\x44\0", 22);
+			  memcpy (contents + roff - 2,
+				  "\x48\x8b\x04\x25\0\0\0\0\x48\x03\x05"
+				  "\0\0\0\0\x66\x0f\x1f\x44\0", 21);
+				fill_segment_prefix_byte(contents + roff - 3, use_gs);
 			  largepic = 1;
 			}
 		      else
@@ -3785,9 +3806,10 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			  if (roff < 4
 			      || (roff - 4 + 16) > input_section->size)
 			    goto corrupt_input;
-			  memcpy (contents + roff - 4,
-				  "\x64\x48\x8b\x04\x25\0\0\0\0\x48\x03\x05\0\0\0",
-				  16);
+			  memcpy (contents + roff - 3,
+				  "\x48\x8b\x04\x25\0\0\0\0\x48\x03\x05\0\0\0",
+				  15);
+				fill_segment_prefix_byte(contents + roff - 4, use_gs);
 			}
 		    }
 		  else
@@ -3795,9 +3817,10 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 		      if (roff < 3
 			  || (roff - 3 + 15) > input_section->size)
 			goto corrupt_input;
-		      memcpy (contents + roff - 3,
-			      "\x64\x8b\x04\x25\0\0\0\0\x48\x03\x05\0\0\0",
-			      15);
+		      memcpy (contents + roff - 2,
+			      "\x8b\x04\x25\0\0\0\0\x48\x03\x05\0\0\0",
+			      14);
+					fill_segment_prefix_byte(contents + roff - 3, use_gs);
 		    }
 
 		  relocation = (htab->elf.sgot->output_section->vma
@@ -3931,6 +3954,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 		      memcpy (contents + rel->r_offset - 3,
 			      "\x66\x66\x66\x66\x2e\x0f\x1f\x84\0\0\0\0\0"
 			      "\x64\x48\x8b\x04\x25\0\0\0", 22);
+					fill_segment_prefix_byte(contents + rel->r_offset + 9, use_gs);
 		    }
 		  else if (contents[rel->r_offset + 4] == 0xff
 			   || contents[rel->r_offset + 4] == 0x67)
@@ -3941,7 +3965,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 		      memcpy (contents + rel->r_offset - 3,
 			      "\x66\x66\x66\x66\x64\x48\x8b\x04\x25\0\0\0",
 			      13);
-
+					fill_segment_prefix_byte(contents + rel->r_offset + 1, use_gs);
 		    }
 		  else
 		    {
@@ -3950,6 +3974,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			goto corrupt_input;
 		      memcpy (contents + rel->r_offset - 3,
 			      "\x66\x66\x66\x64\x48\x8b\x04\x25\0\0\0", 12);
+					fill_segment_prefix_byte(contents + rel->r_offset, use_gs);
 		    }
 		}
 	      else
@@ -3964,6 +3989,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 		      memcpy (contents + rel->r_offset - 3,
 			      "\x66\x0f\x1f\x40\x00\x64\x8b\x04\x25\0\0\0",
 			      13);
+					fill_segment_prefix_byte(contents + rel->r_offset + 2, use_gs);
 		    }
 		  else
 		    {
@@ -3972,6 +3998,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			goto corrupt_input;
 		      memcpy (contents + rel->r_offset - 3,
 			      "\x0f\x1f\x40\x00\x64\x8b\x04\x25\0\0\0", 12);
+					fill_segment_prefix_byte(contents + rel->r_offset + 1, use_gs);
 		    }
 		}
 	      /* Skip R_X86_64_PC32, R_X86_64_PLT32, R_X86_64_GOTPCRELX

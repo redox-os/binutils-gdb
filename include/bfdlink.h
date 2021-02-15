@@ -675,6 +675,8 @@ struct bfd_link_info
 
   /* The version information.  */
   struct bfd_elf_version_tree *version_info;
+
+  unsigned int use_gs_for_tls : 1;
 };
 
 /* Some forward-definitions used by some callbacks.  */
