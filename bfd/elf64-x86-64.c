@@ -3435,7 +3435,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
 			    }
 			  memcpy (contents + roff - 2,
 				  "\x48\x8b\x04\x25\0\0\0\0\x48\x8d\x80"
-				  "\0\0\0\0\x66\x0f\x1f\x44\0", 12);
+				  "\0\0\0\0\x66\x0f\x1f\x44\0", 21);
 
 				fill_segment_prefix_byte(contents + roff - 3, use_gs);
 
