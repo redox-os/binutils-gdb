@@ -19,6 +19,7 @@ dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 dnl Process this file with autoconf to produce a configure script.
 
 AC_INIT
+AC_CONFIG_MACRO_DIRS([../config])
 AC_CONFIG_SRCDIR([server.cc])
 AC_CONFIG_HEADERS(config.h:config.in, [echo > stamp-h])
 
@@ -379,7 +380,7 @@ if test "$srv_xmlfiles" != ""; then
   done
 fi
 
-GDBSERVER_DEPFILES="$srv_regobj $srv_tgtobj $srv_hostio_err_objs $srv_thread_depfiles"
+GDBSERVER_DEPFILES="$srv_regobj $srv_tgtobj $srv_thread_depfiles"
 GDBSERVER_LIBS="$srv_libs"
 
 dnl Check whether the target supports __sync_*_compare_and_swap.

@@ -120,7 +120,7 @@ bool dwarf2_evaluate_property (const struct dynamic_prop *prop,
 void dwarf2_compile_property_to_c (string_file *stream,
 				   const char *result_name,
 				   struct gdbarch *gdbarch,
-				   unsigned char *registers_used,
+				   std::vector<bool> &registers_used,
 				   const struct dynamic_prop *prop,
 				   CORE_ADDR address,
 				   struct symbol *sym);
@@ -243,7 +243,6 @@ struct call_site_chain
     struct call_site *call_site[1];
   };
 
-struct call_site_stuff;
 extern gdb::unique_xmalloc_ptr<call_site_chain> call_site_find_chain
   (struct gdbarch *gdbarch, CORE_ADDR caller_pc, CORE_ADDR callee_pc);
 

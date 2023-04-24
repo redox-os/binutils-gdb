@@ -865,7 +865,6 @@ set_mips64_transfers_32bit_regs (const char *args, int from_tty,
 				 struct cmd_list_element *c)
 {
   struct gdbarch_info info;
-  gdbarch_info_init (&info);
   /* FIXME: cagney/2003-11-15: Should be setting a field in "info"
      instead of relying on globals.  Doing that would let generic code
      handle the search for this specific architecture.  */
@@ -926,11 +925,11 @@ mips_register_to_value (struct frame_info *frame, int regnum,
       get_frame_register (frame, regnum + 0, to + 4);
       get_frame_register (frame, regnum + 1, to + 0);
 
-      if (!get_frame_register_bytes (frame, regnum + 0, 0, 4, to + 4,
+      if (!get_frame_register_bytes (frame, regnum + 0, 0, {to + 4, 4},
 				     optimizedp, unavailablep))
 	return 0;
 
-      if (!get_frame_register_bytes (frame, regnum + 1, 0, 4, to + 0,
+      if (!get_frame_register_bytes (frame, regnum + 1, 0, {to + 0, 4},
 				     optimizedp, unavailablep))
 	return 0;
       *optimizedp = *unavailablep = 0;
@@ -938,11 +937,11 @@ mips_register_to_value (struct frame_info *frame, int regnum,
     }
   else if (mips_convert_register_gpreg_case_p (gdbarch, regnum, type))
     {
-      int len = TYPE_LENGTH (type);
+      size_t len = TYPE_LENGTH (type);
       CORE_ADDR offset;
 
       offset = gdbarch_byte_order (gdbarch) == BFD_ENDIAN_BIG ? 8 - len : 0;
-      if (!get_frame_register_bytes (frame, regnum, offset, len, to,
+      if (!get_frame_register_bytes (frame, regnum, offset, {to, len},
 				     optimizedp, unavailablep))
 	return 0;
 
@@ -970,7 +969,7 @@ mips_value_to_register (struct frame_info *frame, int regnum,
   else if (mips_convert_register_gpreg_case_p (gdbarch, regnum, type))
     {
       gdb_byte fill[8];
-      int len = TYPE_LENGTH (type);
+      size_t len = TYPE_LENGTH (type);
       
       /* Sign extend values, irrespective of type, that are stored to 
 	 a 64-bit general purpose register.  (32-bit unsigned values
@@ -984,8 +983,8 @@ mips_value_to_register (struct frame_info *frame, int regnum,
 	    store_signed_integer (fill, 8, BFD_ENDIAN_BIG, -1);
 	  else
 	    store_signed_integer (fill, 8, BFD_ENDIAN_BIG, 0);
-	  put_frame_register_bytes (frame, regnum, 0, 8 - len, fill);
-	  put_frame_register_bytes (frame, regnum, 8 - len, len, from);
+	  put_frame_register_bytes (frame, regnum, 0, {fill, 8 - len});
+	  put_frame_register_bytes (frame, regnum, 8 - len, {from, len});
 	}
       else
 	{
@@ -993,8 +992,8 @@ mips_value_to_register (struct frame_info *frame, int regnum,
 	    store_signed_integer (fill, 8, BFD_ENDIAN_LITTLE, -1);
 	  else
 	    store_signed_integer (fill, 8, BFD_ENDIAN_LITTLE, 0);
-	  put_frame_register_bytes (frame, regnum, 0, len, from);
-	  put_frame_register_bytes (frame, regnum, len, 8 - len, fill);
+	  put_frame_register_bytes (frame, regnum, 0, {from, len});
+	  put_frame_register_bytes (frame, regnum, len, {fill, 8 - len});
 	}
     }
   else
@@ -2444,7 +2443,8 @@ set_reg_offset (struct gdbarch *gdbarch, struct mips_frame_cache *this_cache,
 		int regnum, CORE_ADDR offset)
 {
   if (this_cache != NULL
-      && this_cache->saved_regs[regnum].is_realreg ())
+      && this_cache->saved_regs[regnum].is_realreg ()
+      && this_cache->saved_regs[regnum].realreg () == regnum)
     {
       this_cache->saved_regs[regnum + 0
 			     * gdbarch_num_regs (gdbarch)].set_addr (offset);
@@ -2861,9 +2861,8 @@ mips_insn16_frame_cache (struct frame_info *this_frame, void **this_cache)
   }
   
   /* gdbarch_sp_regnum contains the value and not the address.  */
-  trad_frame_set_value (cache->saved_regs,
-			gdbarch_num_regs (gdbarch) + MIPS_SP_REGNUM,
-			cache->base);
+  cache->saved_regs[gdbarch_num_regs (gdbarch)
+		    + MIPS_SP_REGNUM].set_value (cache->base);
 
   return (struct mips_frame_cache *) (*this_cache);
 }
@@ -2902,6 +2901,7 @@ mips_insn16_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind mips_insn16_frame_unwind =
 {
+  "mips insn16 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   mips_insn16_frame_this_id,
@@ -3296,9 +3296,8 @@ mips_micro_frame_cache (struct frame_info *this_frame, void **this_cache)
   }
 
   /* gdbarch_sp_regnum contains the value and not the address.  */
-  trad_frame_set_value (cache->saved_regs,
-			gdbarch_num_regs (gdbarch) + MIPS_SP_REGNUM,
-			cache->base);
+  cache->saved_regs[gdbarch_num_regs (gdbarch)
+		    + MIPS_SP_REGNUM].set_value (cache->base);
 
   return (struct mips_frame_cache *) (*this_cache);
 }
@@ -3338,6 +3337,7 @@ mips_micro_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind mips_micro_frame_unwind =
 {
+  "mips micro prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   mips_micro_frame_this_id,
@@ -3388,8 +3388,10 @@ reset_saved_regs (struct gdbarch *gdbarch, struct mips_frame_cache *this_cache)
     const int num_regs = gdbarch_num_regs (gdbarch);
     int i;
 
+    /* Reset the register values to their default state.  Register i's value
+       is in register i.  */
     for (i = 0; i < num_regs; i++)
-      this_cache->saved_regs[i].set_addr (-1);
+      this_cache->saved_regs[i].set_realreg (i);
   }
 }
 
@@ -3672,9 +3674,8 @@ mips_insn32_frame_cache (struct frame_info *this_frame, void **this_cache)
   }
   
   /* gdbarch_sp_regnum contains the value and not the address.  */
-  trad_frame_set_value (cache->saved_regs,
-			gdbarch_num_regs (gdbarch) + MIPS_SP_REGNUM,
-			cache->base);
+  cache->saved_regs[gdbarch_num_regs (gdbarch)
+		    + MIPS_SP_REGNUM].set_value (cache->base);
 
   return (struct mips_frame_cache *) (*this_cache);
 }
@@ -3712,6 +3713,7 @@ mips_insn32_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind mips_insn32_frame_unwind =
 {
+  "mips insn32 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   mips_insn32_frame_this_id,
@@ -3828,6 +3830,7 @@ mips_stub_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind mips_stub_frame_unwind =
 {
+  "mips stub",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   mips_stub_frame_this_id,
@@ -4284,7 +4287,7 @@ heuristic-fence-post' command.\n",
 
 	/* On MIPS16, any one of the following is likely to be the
 	   start of a function:
-  	   extend save
+	   extend save
 	   save
 	   entry
 	   addiu sp,-n
@@ -6918,7 +6921,6 @@ static void
 set_mipsfpu_single_command (const char *args, int from_tty)
 {
   struct gdbarch_info info;
-  gdbarch_info_init (&info);
   mips_fpu_type = MIPS_FPU_SINGLE;
   mips_fpu_type_auto = 0;
   /* FIXME: cagney/2003-11-15: Should be setting a field in "info"
@@ -6932,7 +6934,6 @@ static void
 set_mipsfpu_double_command (const char *args, int from_tty)
 {
   struct gdbarch_info info;
-  gdbarch_info_init (&info);
   mips_fpu_type = MIPS_FPU_DOUBLE;
   mips_fpu_type_auto = 0;
   /* FIXME: cagney/2003-11-15: Should be setting a field in "info"
@@ -6946,7 +6947,6 @@ static void
 set_mipsfpu_none_command (const char *args, int from_tty)
 {
   struct gdbarch_info info;
-  gdbarch_info_init (&info);
   mips_fpu_type = MIPS_FPU_NONE;
   mips_fpu_type_auto = 0;
   /* FIXME: cagney/2003-11-15: Should be setting a field in "info"
@@ -8790,7 +8790,6 @@ mips_abi_update (const char *ignore_args,
 
   /* Force the architecture to update, and (if it's a MIPS architecture)
      mips_gdbarch_init will take care of the rest.  */
-  gdbarch_info_init (&info);
   gdbarch_update_p (info);
 }
 
@@ -8945,11 +8944,11 @@ _initialize_mips_tdep ()
   /* Add root prefix command for all "set mips"/"show mips" commands.  */
   add_basic_prefix_cmd ("mips", no_class,
 			_("Various MIPS specific commands."),
-			&setmipscmdlist, "set mips ", 0, &setlist);
+			&setmipscmdlist, 0, &setlist);
 
   add_show_prefix_cmd ("mips", no_class,
 		       _("Various MIPS specific commands."),
-		       &showmipscmdlist, "show mips ", 0, &showlist);
+		       &showmipscmdlist, 0, &showlist);
 
   /* Allow the user to override the ABI.  */
   add_setshow_enum_cmd ("abi", class_obscure, mips_abi_strings,
@@ -8990,21 +8989,24 @@ and is updated automatically from ELF file flags if available."),
 
   add_basic_prefix_cmd ("mipsfpu", class_support,
 			_("Set use of MIPS floating-point coprocessor."),
-			&mipsfpulist, "set mipsfpu ", 0, &setlist);
+			&mipsfpulist, 0, &setlist);
   add_cmd ("single", class_support, set_mipsfpu_single_command,
 	   _("Select single-precision MIPS floating-point coprocessor."),
 	   &mipsfpulist);
-  add_cmd ("double", class_support, set_mipsfpu_double_command,
-	   _("Select double-precision MIPS floating-point coprocessor."),
-	   &mipsfpulist);
-  add_alias_cmd ("on", "double", class_support, 1, &mipsfpulist);
-  add_alias_cmd ("yes", "double", class_support, 1, &mipsfpulist);
-  add_alias_cmd ("1", "double", class_support, 1, &mipsfpulist);
-  add_cmd ("none", class_support, set_mipsfpu_none_command,
-	   _("Select no MIPS floating-point coprocessor."), &mipsfpulist);
-  add_alias_cmd ("off", "none", class_support, 1, &mipsfpulist);
-  add_alias_cmd ("no", "none", class_support, 1, &mipsfpulist);
-  add_alias_cmd ("0", "none", class_support, 1, &mipsfpulist);
+  cmd_list_element *set_mipsfpu_double_cmd
+    = add_cmd ("double", class_support, set_mipsfpu_double_command,
+	       _("Select double-precision MIPS floating-point coprocessor."),
+	       &mipsfpulist);
+  add_alias_cmd ("on", set_mipsfpu_double_cmd, class_support, 1, &mipsfpulist);
+  add_alias_cmd ("yes", set_mipsfpu_double_cmd, class_support, 1, &mipsfpulist);
+  add_alias_cmd ("1", set_mipsfpu_double_cmd, class_support, 1, &mipsfpulist);
+
+  cmd_list_element *set_mipsfpu_none_cmd
+    = add_cmd ("none", class_support, set_mipsfpu_none_command,
+	       _("Select no MIPS floating-point coprocessor."), &mipsfpulist);
+  add_alias_cmd ("off", set_mipsfpu_none_cmd, class_support, 1, &mipsfpulist);
+  add_alias_cmd ("no", set_mipsfpu_none_cmd, class_support, 1, &mipsfpulist);
+  add_alias_cmd ("0", set_mipsfpu_none_cmd, class_support, 1, &mipsfpulist);
   add_cmd ("auto", class_support, set_mipsfpu_auto_command,
 	   _("Select MIPS floating-point coprocessor automatically."),
 	   &mipsfpulist);

@@ -179,10 +179,7 @@ tui_rl_other_window (int count, int key)
 
   win_info = tui_next_win (tui_win_with_focus ());
   if (win_info)
-    {
-      tui_set_win_focus_to (win_info);
-      keypad (TUI_CMD_WIN->handle.get (), win_info != TUI_CMD_WIN);
-    }
+    tui_set_win_focus_to (win_info);
   return 0;
 }
 
@@ -420,6 +417,12 @@ tui_enable (void)
 	}
 #endif
 
+      /* We must mark the tui sub-system active before trying to setup the
+	 current layout as tui windows defined by an extension language
+	 rely on this flag being true in order to know that the window
+	 they are creating is currently valid.  */
+      tui_active = true;
+
       cbreak ();
       noecho ();
       /* timeout (1); */
@@ -439,18 +442,20 @@ tui_enable (void)
     }
   else
     {
-     /* Save the current gdb setting of the terminal.
-	Curses will restore this state when endwin() is called.  */
-     def_shell_mode ();
-     clearok (stdscr, TRUE);
-   }
+      /* Save the current gdb setting of the terminal.
+	 Curses will restore this state when endwin() is called.  */
+      def_shell_mode ();
+      clearok (stdscr, TRUE);
+
+      tui_active = true;
+    }
+
+  gdb_assert (tui_active);
 
   if (tui_update_variables ())
     tui_rehighlight_all ();
 
   tui_setup_io (1);
-
-  tui_active = true;
 
   /* Resize windows before anything might display/refresh a
      window.  */
@@ -500,6 +505,10 @@ tui_disable (void)
   rl_startup_hook = 0;
   rl_already_prompted = 0;
 
+#ifdef NCURSES_MOUSE_VERSION
+  mousemask (0, NULL);
+#endif
+
   /* Leave curses and restore previous gdb terminal setting.  */
   endwin ();
 
@@ -544,9 +553,9 @@ tui_is_window_visible (enum tui_win_type type)
   if (!tui_active)
     return false;
 
-  if (tui_win_list[type] == 0)
+  if (tui_win_list[type] == nullptr)
     return false;
-  
+
   return tui_win_list[type]->is_visible ();
 }
 

@@ -221,6 +221,21 @@ set x86_64tests {
      "-melf_x86_64 -pie -z notext tmpdir/pr20550a.o tmpdir/pr20550b.so"
      ""
      "--64" { dummy.s } {} "pr20550"}
+    {"Build pr27587"
+     "-melf_x86_64 -e main"
+     "" ""
+     { pr27587a.obj.bz2 pr27587b.obj.bz2 }
+     {{ld "pr27587.err"}} "pr27587"}
+    {"Build pr27590.o"
+     "-r -melf_x86_64"
+     "" ""
+     { pr27590a.obj.bz2 pr27590b.obj.bz2 }
+     {{readelf -SW pr27590.rd}} "pr27590.o"}
+    {"Build textrel-1.so" "-melf_x86_64 -shared" ""
+     "--64" { textrel-1a.s } {} "textrel-1.so"}
+    {"Build textrel-1" "-no-pie -melf_x86_64 -z nocopyreloc"
+     "tmpdir/textrel-1.so"
+     "--64" { textrel-1b.s } {{ld "textrel-1.err"}} "textrel-1"}
 }
 
 run_ld_link_tests $x86_64tests
@@ -251,6 +266,8 @@ run_dump_test "abs-l1om"
 run_dump_test "apic"
 run_dump_test "pcrel8"
 run_dump_test "pcrel16"
+run_dump_test "pcrel16-2"
+run_dump_test "rela"
 run_dump_test "tlsgd2"
 run_dump_test "tlsgd3"
 run_dump_test "tlsgd12"
@@ -462,6 +479,7 @@ run_dump_test "property-x86-isa3"
 run_dump_test "property-x86-isa3-x32"
 run_dump_test "property-x86-isa4"
 run_dump_test "property-x86-isa4-x32"
+run_dump_test "code16"
 
 if ![istarget "x86_64-*-linux*"] {
     return
@@ -509,6 +527,7 @@ run_dump_test "ilp32-8"
 run_dump_test "ilp32-9"
 run_dump_test "ilp32-10"
 run_dump_test "ilp32-11"
+run_dump_test "ilp32-12"
 run_dump_test "ia32-1"
 run_dump_test "ia32-2"
 run_dump_test "ia32-3"
@@ -677,6 +696,8 @@ run_dump_test "pr26939"
 run_dump_test "pr26939-x32"
 run_dump_test "pr27016a"
 run_dump_test "pr27016b"
+run_dump_test "report-reloc-1"
+run_dump_test "report-reloc-1-x32"
 
 proc undefined_weak {cflags ldflags} {
     set testname "Undefined weak symbol"
@@ -1305,6 +1326,14 @@ if { [isnative] && [check_compiler_available] } {
 	     {readelf -rW pr22842b.rd}} \
 	    "pr22842" \
 	] \
+	[list \
+	    "Build libprotected-func-1.so" \
+	    "-shared" \
+	    "-fPIC -Wa,-mx86-used-note=yes" \
+	    { protected-func-1a.s } \
+	    {} \
+	    "libprotected-func-1.so" \
+	] \
     ]
 
     if  {[istarget "x86_64-*-linux*-gnux32"]} {
@@ -1583,69 +1612,6 @@ if { [isnative] && [check_compiler_available] } {
 	    "property-3-static" "pass.out" \
 	] \
 	[list \
-	    "Run property 3" \
-	    "" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S} \
-	    "property-3" "pass.out" \
-	] \
-	[list \
-	    "Run property 3 (PIE)" \
-	    "-pie" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-1.S property-stack.S} \
-	    "property-3-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 3 (static)" \
-	    "-static" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-1.S pass.c property-stack.S} \
-	    "property-3-static" "pass.out" \
-	] \
-	[list \
-	    "Run property 4" \
-	    "" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S property-x86-2.S} \
-	    "property-4" "pass.out" \
-	] \
-	[list \
-	    "Run property 4 (PIE)" \
-	    "-pie" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-2.S property-x86-1.S property-stack.S} \
-	    "property-4-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 4 (static)" \
-	    "-static" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-2.S property-x86-1.S pass.c property-stack.S} \
-	    "property-4-static" "pass.out" \
-	] \
-	[list \
-	    "Run property 5" \
-	    "-Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S property-x86-2.S} \
-	    "property-5" "pass.out" \
-	] \
-	[list \
-	    "Run property 5 (PIE)" \
-	    "-pie -Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-2.S property-x86-1.S property-stack.S} \
-	    "property-5-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 5 (static)" \
-	    "-static -Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-2.S property-x86-1.S pass.c property-stack.S} \
-	    "property-5-static" "pass.out" \
-	] \
-	[list \
 	    "Run pr22001-1a (PIC 1)" \
 	    "$NOPIE_LDFLAGS -Wl,-z,nocopyreloc,--no-as-needed tmpdir/pr22001-1.so" \
 	    "-Wa,-mx86-used-note=yes" \
@@ -1776,6 +1742,24 @@ if { [isnative] && [check_compiler_available] } {
 	    { pr23997a.s pr23997b.c pr23997c.c } \
 	    "pr23997" \
 	    "pass.out" \
+	] \
+	[list \
+	    "Run protected-func-1 without PIE" \
+	    "$NOPIE_LDFLAGS -Wl,--no-as-needed tmpdir/libprotected-func-1.so" \
+	    "-Wa,-mx86-used-note=yes" \
+	    { protected-func-1b.c } \
+	    "protected-func-1a" \
+	    "pass.out" \
+	    "$NOPIE_CFLAGS" \
+	] \
+	[list \
+	    "Run protected-func-1 with PIE" \
+	    "-Wl,--no-as-needed -pie tmpdir/libprotected-func-1.so" \
+	    "-Wa,-mx86-used-note=yes" \
+	    { protected-func-1b.c } \
+	    "protected-func-1b" \
+	    "pass.out" \
+	    "-fPIE" \
 	] \
     ]
 

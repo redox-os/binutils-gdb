@@ -114,11 +114,6 @@ struct elf_section_match
 
 #define OBJ_SYMFIELD_TYPE struct elf_obj_sy
 
-#ifndef FALSE
-#define FALSE 0
-#define TRUE  !FALSE
-#endif
-
 #ifndef obj_begin
 #define obj_begin() elf_begin ()
 #endif
@@ -194,6 +189,7 @@ extern const char * obj_elf_section_name (void);
 extern void obj_elf_previous (int);
 extern void obj_elf_version (int);
 extern void obj_elf_common (int);
+extern void obj_elf_bss (int);
 extern void obj_elf_data (int);
 extern void obj_elf_text (int);
 extern void obj_elf_change_section
@@ -203,7 +199,7 @@ extern void obj_elf_vtable_inherit (int);
 extern void obj_elf_vtable_entry (int);
 extern struct fix * obj_elf_get_vtable_inherit (void);
 extern struct fix * obj_elf_get_vtable_entry (void);
-extern bfd_boolean obj_elf_seen_attribute
+extern bool obj_elf_seen_attribute
   (int, unsigned int);
 extern int obj_elf_vendor_attribute (int);
 

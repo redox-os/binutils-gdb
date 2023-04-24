@@ -1,3 +1,307 @@
+2021-06-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* Makefile.in (SIM_EXTRA_CFLAGS): Change to
+	@SIM_RX_CYCLE_ACCURATE_FLAGS@.
+	* configure.ac: Delete most content.  Moved sim-rx-cycle-accurate
+	to ...
+	* acinclude.m4: ... here.
+	* aclocal.m4: Removed.
+	* configure: Removed.
+
+2021-06-22  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+
+2021-06-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-20  Mike Frysinger  <vapier@gentoo.org>
+
+	* Makefile.in: Rename sim_cycle_accurate_flags to
+	sim_rx_cycle_accurate_flags.
+	* configure.ac: Likewise.
+	* configure: Regenerate.
+
+2021-06-20  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac (SIM_AC_COMMON): Delete.
+	* aclocal.m4, configure: Regenerate.
+
+2021-06-20  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+
+2021-06-19  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4: Regenerate.
+	* configure: Regenerate.
+
+2021-06-19  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-18  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4, configure: Regenerate.
+
+2021-06-18  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-17  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-06-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+	* config.in: Removed.
+
+2021-06-15  Mike Frysinger  <vapier@gentoo.org>
+
+	* config.in, configure: Regenerate.
+
+2021-06-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* Makefile.in (SIM_EXTRA_CFLAGS): Set to @sim_cycle_accurate_flags@.
+	* configure.ac: Move CYCLE_ACCURATE define from AC_DEFINE to
+	AC_SUBST.
+	* config.in, configure: Regenerate.
+
+2021-06-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* README.txt: Change cycle-stats to sim-profile.
+	* configure.ac: Delete cycle-stats.
+	* mem.c: Change CYCLE_STATS to WITH_PROFILE
+	* rx.c: Likewise.
+	* config.in, configure: Regenerate.
+
+2021-06-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4, config.in, configure: Regenerate.
+
+2021-06-12  Mike Frysinger  <vapier@gentoo.org>
+
+	* config.in, configure: Regenerate.
+
+2021-05-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* err.c: Include defs.h.
+	* fpu.c, gdb-if.c, load.c, main.c, mem.c, misc.c, reg.c, rx.c,
+	syscalls.c, trace.c: Replace config.h include with defs.h.
+
+2021-05-16  Mike Frysinger  <vapier@gentoo.org>
+
+	* config.in, configure: Regenerate.
+
+2021-05-14  Mike Frysinger  <vapier@gentoo.org>
+
+	* gdb-if.c: Update include path.
+	* load.h: Likewise.
+	* syscalls.c: Likewise.
+
+2021-05-05  Mike Frysinger  <vapier@gentoo.org>
+
+	* gdb-if.c: Include libiberty.h.
+	(sim_do_command): Rewrite to use buildargv.
+
+2021-05-04  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-05-04  Mike Frysinger  <vapier@gentoo.org>
+
+	* load.c (rx_load): Use BFD_VMA_FMT and drop casts.
+
+2021-05-03  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* trace.c (op_printf): Likewise.
+
+2021-05-01  Mike Frysinger  <vapier@gentoo.org>
+
+	* config.in, configure: Regenerate.
+
+2021-05-01  Mike Frysinger  <vapier@gentoo.org>
+
+	* load.c (rx_load): Cast size to long.
+
+2021-04-26  Mike Frysinger  <vapier@gentoo.org>
+
+	* Makefile.in (NL_TARGET): Delete.
+
+2021-04-26  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4, config.in, configure: Regenerate.
+
+2021-04-22  Tom Tromey  <tom@tromey.com>
+
+	* configure, config.in: Rebuild.
+
+2021-04-22  Tom Tromey  <tom@tromey.com>
+
+	* Makefile.in (LIBS): Remove.
+
+2021-04-22  Tom Tromey  <tom@tromey.com>
+
+	* Makefile.in (err.o, fpu.o, gdb-if.o, load.o, main.o, mem.o)
+	(misc.o, reg.o, rx.o, syscalls.o, trace.o): Remove.
+
+2021-04-22  Tom Tromey  <tom@tromey.com>
+
+	* configure: Rebuild.
+
+2021-04-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4: Regenerate.
+
+2021-04-21  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* configure: Regenerate.
+
+2021-04-20  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Delete AC_CHECK_HEADERS_ONCE.
+	* main.c: Delete HAVE_GETOPT_H.
+	* config.in, configure: Regenerate.
+
+2021-04-18  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Change AC_CHECK_HEADERS to AC_CHECK_HEADERS_ONCE.
+	* configure: Regenerate.
+
+2021-04-18  Mike Frysinger  <vapier@gentoo.org>
+
+	* Makefile.in (NL_TARGET): Define.
+	(syscalls.o): Delete syscall.h.
+	* syscalls.c: Change syscall.h include to targ-vals.h.
+	(rx_syscall): Add TARGET_ prefix to all SYS_ constants.
+	* syscall.h: Removed.
+
+2021-04-18  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-04-09  Luis Machado  <luis.machado@linaro.org>
+
+	* fpu.c (rxfp_itof): Initialize structure.
+
+2021-04-02  Mike Frysinger  <vapier@gentoo.org>
+
+	* aclocal.m4, configure: Regenerate.
+
+2021-02-28  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-02-21  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac (AC_CONFIG_MACRO_DIRS): Replace common with m4.
+	* aclocal.m4, configure: Regenerate.
+
+2021-02-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* trace.c (load_file_and_line): Use fread return value to index
+	the data.
+
+2021-02-13  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Replace sinclude with AC_CONFIG_MACRO_DIRS.
+	* aclocal.m4, configure: Regenerate.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* configure: Regenerate.
+	* configure.ac (SIM_AC_OPTION_WARNINGS): Delete call.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* mem.c (mem_put_blk): Rename parameter, add cast from parameter
+	type to local type.  Remove cast later in the function.
+	(mem_get_blk): Likewise.
+	* mem.h (mem_put_blk): Rename parameter to match definition.
+	(mem_get_blk): Likewise.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* load.c: Replace 'elf/internal.h' and 'elf/common.h' includes
+	with 'elf-bfd.h' include.
+	* trace.c: Add 'trace.h' include.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* reg.c (trace_register_changes): Use PRIx64 in printf format
+	string.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* syscalls.c (rx_syscall): Move declaration of some variables to
+	the start of the enclosing block.
+	* trace.c (load_file_and_line): Likewise.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* reg.c (fpsw2str): Provide a format string to printf.
+	(trace_register_changes): Likewise.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* err.c (execution_error_exit_all): Delete.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* fpu.c (check_exceptions): Make static.
+	* gdb-if.c (handle_step): Likewise.
+	* mem.c (mem_put_byte): Likewise.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* cpu.h (trace_register_changes): Add void parameter type.
+	* err.c (ee_overrides): Likewise.
+	* mem.c (mem_usage_stats): Likewise.
+	(e): Likewise.
+	* reg.c (stack_heap_stats): Likewise.
+	* rx.c (pop): Likewise.
+	(poppc): Likewise.
+	(decode_opcode): Likewise.
+	* syscalls.c (arg): Likewise.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* gdb-if.c (sim_do_command): Work with a copy of the command.
+
+2021-02-08  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* gdb-if.c (sim_memory_map): New function.
+
+2021-02-06  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
+2021-01-11  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure.ac: Call SIM_AC_OPTION_WARNINGS.
+	* configure: Regenerate.
+
+2021-01-11  Mike Frysinger  <vapier@gentoo.org>
+
+	* config.in, configure: Regenerate.
+	* main.c: Delete HAVE_STDLIB_H.
+
+2021-01-09  Mike Frysinger  <vapier@gentoo.org>
+
+	* configure: Regenerate.
+
 2021-01-08  Mike Frysinger  <vapier@gentoo.org>
 
 	* configure: Regenerate.

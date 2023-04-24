@@ -29,12 +29,12 @@
 #include <fcntl.h>
 #include "gdbsupport/gdb_select.h"
 
-#include "inflow.h"
 #include "gdbcmd.h"
 #ifdef HAVE_TERMIOS_H
 #include <termios.h>
 #endif
 #include "gdbsupport/job-control.h"
+#include "gdbsupport/scoped_ignore_sigttou.h"
 
 #ifdef HAVE_SYS_IOCTL_H
 #include <sys/ioctl.h>
@@ -808,7 +808,7 @@ new_tty (void)
      systems (SVR4 for example), this may cause a SIGTTOU, so temporarily
      ignore SIGTTOU.  */
   tty = open ("/dev/tty", O_RDWR);
-  if (tty > 0)
+  if (tty >= 0)
     {
       scoped_ignore_sigttou ignore_sigttou;
 
@@ -963,5 +963,5 @@ _initialize_inflow ()
   /* OK, figure out whether we have job control.  */
   have_job_control ();
 
-  gdb::observers::inferior_exit.attach (inflow_inferior_exit);
+  gdb::observers::inferior_exit.attach (inflow_inferior_exit, "inflow");
 }

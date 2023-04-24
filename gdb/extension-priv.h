@@ -92,7 +92,7 @@ struct extension_language_script_ops
 
   /* Return non-zero if auto-loading scripts in this extension language
      is enabled.  */
-  int (*auto_load_enabled) (const struct extension_language_defn *);
+  bool (*auto_load_enabled) (const struct extension_language_defn *);
 };
 
 /* The interface for making calls from GDB to an external extension
@@ -109,10 +109,11 @@ struct extension_language_script_ops
 
 struct extension_language_ops
 {
-  /* Called at the end of gdb initialization to give the extension language
-     an opportunity to finish up.  This is useful for things like adding
-     new commands where one has to wait until gdb itself is initialized.  */
-  void (*finish_initialization) (const struct extension_language_defn *);
+  /* Called after GDB has processed the early initialization settings
+     files.  This is when the extension language should be initialized.  By
+     the time this is called all of the earlier initialization functions
+     have already been called.  */
+  void (*initialize) (const struct extension_language_defn *);
 
   /* Return non-zero if the extension language successfully initialized.
      This method is required.  */

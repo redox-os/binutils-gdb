@@ -16,7 +16,9 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
-#include "config.h"
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sis.h"
 #include <math.h>
 #include <stdio.h>
@@ -234,11 +236,7 @@ extern uint32 errtt, errftt;
 #endif
 
 static uint32
-sub_cc(psr, operand1, operand2, result)
-    uint32          psr;
-    int32           operand1;
-    int32           operand2;
-    int32           result;
+sub_cc(uint32 psr, int32 operand1, int32 operand2, int32 result)
 {
     psr = ((psr & ~PSR_N) | ((result >> 8) & PSR_N));
     if (result)
@@ -253,11 +251,7 @@ sub_cc(psr, operand1, operand2, result)
 }
 
 uint32
-add_cc(psr, operand1, operand2, result)
-    uint32          psr;
-    int32           operand1;
-    int32           operand2;
-    int32           result;
+add_cc(uint32 psr, int32 operand1, int32 operand2, int32 result)
 {
     psr = ((psr & ~PSR_N) | ((result >> 8) & PSR_N));
     if (result)
@@ -272,9 +266,7 @@ add_cc(psr, operand1, operand2, result)
 }
 
 static void
-log_cc(result, sregs)
-    int32           result;
-    struct pstate  *sregs;
+log_cc(int32 result, struct pstate *sregs)
 {
     sregs->psr &= ~(PSR_CC);	/* Zero CC bits */
     sregs->psr = (sregs->psr | ((result >> 8) & PSR_N));
@@ -398,8 +390,7 @@ extract_byte_signed (uint32 data, uint32 address)
 }
 
 int
-dispatch_instruction(sregs)
-    struct pstate  *sregs;
+dispatch_instruction(struct pstate *sregs)
 {
 
     uint32          cwp, op, op2, op3, asi, rd, cond, rs1,
@@ -1671,9 +1662,7 @@ dispatch_instruction(sregs)
 
 
 static int
-fpexec(op3, rd, rs1, rs2, sregs)
-    uint32          op3, rd, rs1, rs2;
-    struct pstate  *sregs;
+fpexec(uint32 op3, uint32 rd, uint32 rs1, uint32 rs2, struct pstate *sregs)
 {
     uint32          opf, tem, accex;
     int32           fcc;
@@ -1952,10 +1941,7 @@ fpexec(op3, rd, rs1, rs2, sregs)
 }
 
 static int
-chk_asi(sregs, asi, op3)
-    struct pstate  *sregs;
-    uint32 *asi, op3;
-
+chk_asi(struct pstate *sregs, uint32 *asi, uint32 op3)
 {
     if (!(sregs->psr & PSR_S)) {
 	sregs->trap = TRAP_PRIVI;
@@ -1969,8 +1955,7 @@ chk_asi(sregs, asi, op3)
 }
 
 int
-execute_trap(sregs)
-    struct pstate  *sregs;
+execute_trap(struct pstate *sregs)
 {
     int32           cwp;
 
@@ -2017,8 +2002,7 @@ execute_trap(sregs)
 extern struct irqcell irqarr[16];
 
 int
-check_interrupts(sregs)
-    struct pstate  *sregs;
+check_interrupts(struct pstate *sregs)
 {
 #ifdef ERRINJ
     if (errtt) {
@@ -2040,8 +2024,7 @@ check_interrupts(sregs)
 }
 
 void
-init_regs(sregs)
-    struct pstate  *sregs;
+init_regs(struct pstate *sregs)
 {
     sregs->pc = 0;
     sregs->npc = 4;

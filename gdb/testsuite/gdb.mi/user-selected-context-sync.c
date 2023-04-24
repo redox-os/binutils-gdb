@@ -27,7 +27,10 @@ static pthread_barrier_t barrier;
 static void
 child_sub_function (void)
 {
-  while (1); /* thread loop line */
+  volatile int dummy = 0;
+  while (1)
+    /* Dummy loop body to allow setting breakpoint.  */
+    dummy = !dummy; /* thread loop line */
 }
 
 static void *
@@ -57,7 +60,10 @@ main (void)
 
   pthread_barrier_wait (&barrier);
 
-  while (1); /* main break line */
+  volatile int dummy = 0;
+  while (1)
+    /* Dummy loop body to allow setting breakpoint.  */
+    dummy = !dummy; /* main break line */
 
   return 0;
 }

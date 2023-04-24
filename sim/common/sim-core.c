@@ -23,8 +23,13 @@
 #ifndef SIM_CORE_C
 #define SIM_CORE_C
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
 #include "sim-assert.h"
+#include "sim-signal.h"
+#include "libiberty.h"
 
 #if (WITH_HW)
 #include "sim-hw.h"
@@ -453,7 +458,7 @@ sim_core_translate (sim_core_mapping *mapping,
 
 
 #if EXTERN_SIM_CORE_P
-/* See include/gdb/remote-sim.h.  */
+/* See include/sim/sim.h.  */
 char *
 sim_memory_map (SIM_DESC sd)
 {
@@ -479,7 +484,8 @@ sim_memory_map (SIM_DESC sd)
 	  if (mapping->level != 0)
 	    continue;
 
-	  entry = xasprintf ("<memory type='ram' start='%#x' length='%#x'/>\n",
+	  entry = xasprintf ("<memory type='ram' start='%#" PRIxTW "' "
+			     "length='%#" PRIxTW "'/>\n",
 			     mapping->base, mapping->nr_bytes);
 	  /* The sim memory map is organized by access, not by addresses.
 	     So a RWX memory map will have three independent mappings.

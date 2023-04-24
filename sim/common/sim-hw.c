@@ -17,9 +17,13 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
 #include "sim-assert.h"
 #include "sim-options.h"
+#include "sim/callback.h"
 
 #include "sim-hw.h"
 
@@ -28,17 +32,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "hw-main.h"
 #include "hw-base.h"
 
-
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 #include <ctype.h>
 #include <errno.h>
 
@@ -147,8 +142,9 @@ merge_device_file (struct sim_state *sd,
 {
   FILE *description;
   struct hw *current = STATE_HW (sd)->tree;
-  int line_nr;
-  char device_path[1000];
+  char *device_path = NULL;
+  size_t buf_size = 0;
+  ssize_t device_path_len;
 
   /* try opening the file */
   description = fopen (file_name, "r");
@@ -158,19 +154,14 @@ merge_device_file (struct sim_state *sd,
       return SIM_RC_FAIL;
     }
 
-  line_nr = 0;
-  while (fgets (device_path, sizeof (device_path), description))
+  while ((device_path_len = getline (&device_path, &buf_size, description)) > 0)
     {
       char *device;
-      /* check that a complete line was read */
-      if (strchr (device_path, '\n') == NULL)
-	{
-	  fclose (description);
-	  sim_io_eprintf (sd, "%s:%d: line to long", file_name, line_nr);
-	  return SIM_RC_FAIL;
-	}
-      *strchr (device_path, '\n') = '\0';
-      line_nr++;
+      char *next_line = NULL;
+
+      if (device_path[device_path_len - 1] == '\n')
+	device_path[--device_path_len] = '\0';
+
       /* skip comments ("#" or ";") and blank lines lines */
       for (device = device_path;
 	   *device != '\0' && isspace (*device);
@@ -179,33 +170,44 @@ merge_device_file (struct sim_state *sd,
 	  || device[0] == ';'
 	  || device[0] == '\0')
 	continue;
+
       /* merge any appended lines */
-      while (device_path[strlen (device_path) - 1] == '\\')
+      while (device_path[device_path_len - 1] == '\\')
 	{
-	  int curlen = strlen (device_path) - 1;
+	  size_t next_buf_size = 0;
+	  ssize_t next_line_len;
+
 	  /* zap the `\' at the end of the line */
-	  device_path[curlen] = '\0';
+	  device_path[--device_path_len] = '\0';
+
+	  /* get the next line */
+	  next_line_len = getline (&next_line, &next_buf_size, description);
+	  if (next_line_len <= 0)
+	    break;
+
+	  if (next_line[next_line_len - 1] == '\n')
+	    next_line[--next_line_len] = '\0';
+
 	  /* append the next line */
-	  if (!fgets (device_path + curlen,
-		      sizeof (device_path) - curlen,
-		      description))
+	  if (buf_size - device_path_len <= next_line_len)
 	    {
-	      fclose (description);
-	      sim_io_eprintf (sd, "%s:%d: unexpected eof", file_name, line_nr);
-	      return SIM_RC_FAIL;
+	      ptrdiff_t offset = device - device_path;
+
+	      buf_size += next_buf_size;
+	      device_path = xrealloc (device_path, buf_size);
+	      device = device_path + offset;
 	    }
-	  if (strchr (device_path, '\n') == NULL)
-	    {
-	      fclose (description);
-	      sim_io_eprintf (sd, "%s:%d: line to long", file_name, line_nr);
-	      return SIM_RC_FAIL;
-	    }
-	  *strchr (device_path, '\n') = '\0';
-	  line_nr++;
+	  memcpy (device_path + device_path_len, next_line,
+		  next_line_len + 1);
+	  device_path_len += next_line_len;
 	}
+      free (next_line);
+
       /* parse this line */
       current = hw_tree_parse (current, "%s", device);
     }
+
+  free (device_path);
   fclose (description);
   return SIM_RC_OK;
 }
@@ -290,8 +292,12 @@ hw_option_handler (struct sim_state *sd, sim_cpu *cpu, int opt,
 static MODULE_INIT_FN sim_hw_init;
 static MODULE_UNINSTALL_FN sim_hw_uninstall;
 
+/* Provide a prototype to silence -Wmissing-prototypes.  */
+SIM_RC sim_install_hw (struct sim_state *sd);
+
+/* Establish this object.  */
 SIM_RC
-sim_hw_install (struct sim_state *sd)
+sim_install_hw (struct sim_state *sd)
 {
   SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
   sim_add_option_table (sd, NULL, hw_options);

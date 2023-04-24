@@ -166,7 +166,7 @@ inf_child_open_target (const char *arg, int from_tty)
   gdb_assert (dynamic_cast<inf_child_target *> (target) != NULL);
 
   target_preopen (from_tty);
-  push_target (target);
+  current_inferior ()->push_target (target);
   inf_child_explicitly_opened = 1;
   if (from_tty)
     printf_filtered ("Done.  Use the \"run\" command to start a process.\n");
@@ -207,7 +207,7 @@ void
 inf_child_target::maybe_unpush_target ()
 {
   if (!inf_child_explicitly_opened)
-    unpush_target (this);
+    current_inferior ()->unpush_target (this);
 }
 
 void
@@ -407,6 +407,24 @@ bool
 inf_child_target::can_use_agent ()
 {
   return agent_loaded_p ();
+}
+
+void
+inf_child_target::follow_exec (inferior *follow_inf, ptid_t ptid,
+			       const char *execd_pathname)
+{
+  inferior *orig_inf = current_inferior ();
+
+  process_stratum_target::follow_exec (follow_inf, ptid, execd_pathname);
+
+  if (orig_inf != follow_inf)
+    {
+      /* If the target was implicitly push in the original inferior, unpush
+         it.  */
+      scoped_restore_current_thread restore_thread;
+      switch_to_inferior_no_thread (orig_inf);
+      maybe_unpush_target ();
+    }
 }
 
 /* See inf-child.h.  */

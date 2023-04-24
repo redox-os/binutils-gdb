@@ -48,6 +48,22 @@ proc sim_compile { source dest type options } {
     return $result
 }
 
+# Find the path to the simulator for executing.
+proc sim_tool_path {} {
+    global sim_path
+    set sim "$sim_path"
+    if [string equal "" $sim] {
+	global objdir
+	global subdir
+	set arch "$subdir"
+	while { [file dirname $arch] != "." } {
+	    set arch [file dirname $arch]
+	}
+	return "$objdir/$arch/run"
+    }
+    return "$sim"
+}
+
 # Run a program on the simulator.
 # Required by dejagnu (at least ${tool}_run used to be).
 #
@@ -62,7 +78,7 @@ proc sim_compile { source dest type options } {
 #	timeout=val	- set the timeout to val for this run
 #
 # The result is a list of two elements.
-# The first is one of pass/fail/etc.
+# The first is the program's exit status (0/1/etc...).
 # The second is the program's output.
 #
 # This is different than the sim_load routine provided by
@@ -98,16 +114,7 @@ proc sim_run { prog sim_opts prog_opts redir options } {
 	
     verbose "testcase timeout is set to $testcase_timeout" 1
 
-    set sim [board_info target sim]
-    if [string equal "" $sim] {
-	# Special case the simulator.  These tests are designed to
-	# be run inside of the simulator, not on the native host.
-	# So if the sim target isn't set, default to the target run.
-	# These global variables come from generated site.exp.
-	global objdir
-	global arch
-	set sim "$objdir/../$arch/run"
-    }
+    set sim [sim_tool_path]
 
     if [is_remote host] {
 	set prog [remote_download host $prog]
@@ -156,15 +163,7 @@ proc sim_run { prog sim_opts prog_opts redir options } {
 	remote_file host delete $prog
     }
 
-    # ??? Not sure the test for pass/fail is right.
-    # We just care that the simulator ran correctly, not whether the simulated
-    # program return 0 or non-zero from `main'.
-    set status fail
-    if { $return_code == 0 } {
-	set status pass
-    }
-
-    return [list $status $output]
+    return [list $return_code $output]
 }
 
 # Run testcase NAME.
@@ -183,6 +182,7 @@ proc sim_run { prog sim_opts prog_opts redir options } {
 # cc[(mach-list)]: <compiler options>
 # sim[(mach-list)]: <simulator options>
 # progopts: <arguments to the program being simulated>
+# status: program exit status to treat as "pass"
 # output: program output pattern to match with string-match
 # xerror: program is expected to return with a "failure" exit code
 # xfail: <PRMS-opt> <target-triplets-where-test-fails>
@@ -205,6 +205,11 @@ proc run_sim_test { name requested_machs } {
     global global_cc_options
     global global_sim_options
 
+    if ![file exists [sim_tool_path]] {
+	unsupported "$name: missing simulator [sim_tool_path]"
+	return
+    }
+
     if [string match "*/*" $name] {
 	set file $name
 	set name [file tail $name]
@@ -223,6 +228,7 @@ proc run_sim_test { name requested_machs } {
     set opts(cc) ""
     set opts(progopts) ""
     set opts(sim) ""
+    set opts(status) "0"
     set opts(output) ""
     set opts(mach) ""
     set opts(timeout) ""
@@ -384,9 +390,23 @@ proc run_sim_test { name requested_machs } {
 	    set options "$options timeout=$opts(timeout)"
 	}
 
+	if [string match "example" "$mach"] {
+	    set objcopy [find_binutils_prog objcopy]
+	    set comp_output [remote_exec host $objcopy "-O binary -j .text ${name}.x ${name}.bin"]
+	    file rename -force "${name}.bin" "${name}.x"
+	    append opts(sim,$mach) " --target binary"
+	}
+
 	set result [sim_run ${name}.x "$opts(sim,$mach) $global_sim_options" "$opts(progopts)" "" "$options"]
-	set status [lindex $result 0]
+	set return_code [lindex $result 0]
 	set output [lindex $result 1]
+
+	set status fail
+	if { $return_code == 77 } {
+	    set status unsupported
+	} elseif { $return_code == $opts(status) } {
+	    set status pass
+	}
 
 	if { "$status" == "pass" } {
 	    if { "$opts(xerror)" == "no" } {
@@ -394,6 +414,7 @@ proc run_sim_test { name requested_machs } {
 		    pass "$mach $testname"
 		    file delete ${name}.o ${name}.x
 		} else {
+		    verbose -log "status:  $return_code" 3
 		    verbose -log "output:  $output" 3
 		    verbose -log "pattern: $opts(output)" 3
 		    fail "$mach $testname (execution)"
@@ -410,6 +431,7 @@ proc run_sim_test { name requested_machs } {
 		    pass "$mach $testname"
 		    file delete ${name}.o ${name}.x
 		} else {
+		    verbose -log "status:  $return_code" 3
 		    verbose -log "output:  $output" 3
 		    verbose -log "pattern: $opts(output)" 3
 		    fail "$mach $testname (execution)"

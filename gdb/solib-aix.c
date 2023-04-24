@@ -32,6 +32,11 @@
    this module.  */
 static bool solib_aix_debug;
 
+/* Print an "aix-solib" debug statement.  */
+
+#define solib_aix_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (solib_aix_debug, "aix-solib",fmt, ##__VA_ARGS__)
+
 /* Our private data in struct so_list.  */
 
 struct lm_info_aix : public lm_info_base
@@ -241,7 +246,8 @@ solib_aix_get_library_list (struct inferior *inf, const char *warning_msg)
     return data->library_list;
 
   gdb::optional<gdb::char_vector> library_document
-    = target_read_stralloc (current_top_target (), TARGET_OBJECT_LIBRARIES_AIX,
+    = target_read_stralloc (current_inferior ()->top_target (),
+			    TARGET_OBJECT_LIBRARIES_AIX,
 			    NULL);
   if (!library_document && warning_msg != NULL)
     {
@@ -250,10 +256,8 @@ solib_aix_get_library_list (struct inferior *inf, const char *warning_msg)
       return data->library_list;
     }
 
-  if (solib_aix_debug)
-    fprintf_unfiltered (gdb_stdlog,
-			"DEBUG: TARGET_OBJECT_LIBRARIES_AIX = \n%s\n",
-			library_document->data ());
+  solib_aix_debug_printf ("TARGET_OBJECT_LIBRARIES_AIX = %s",
+			  library_document->data ());
 
   data->library_list = solib_aix_parse_libraries (library_document->data ());
   if (!data->library_list.has_value () && warning_msg != NULL)
@@ -374,9 +378,7 @@ solib_aix_free_so (struct so_list *so)
 {
   lm_info_aix *li = (lm_info_aix *) so->lm_info;
 
-  if (solib_aix_debug)
-    fprintf_unfiltered (gdb_stdlog, "DEBUG: solib_aix_free_so (%s)\n",
-			so->so_name);
+  solib_aix_debug_printf ("%s", so->so_name);
 
   delete li;
 }
@@ -683,13 +685,10 @@ solib_aix_get_toc_value (CORE_ADDR pc)
 	     "(%s has no data section)"),
 	   core_addr_to_string (pc), objfile_name (pc_osect->objfile));
 
-  result = (obj_section_addr (data_osect)
-	    + xcoff_get_toc_offset (pc_osect->objfile));
-  if (solib_aix_debug)
-    fprintf_unfiltered (gdb_stdlog,
-			"DEBUG: solib_aix_get_toc_value (pc=%s) -> %s\n",
-			core_addr_to_string (pc),
-			core_addr_to_string (result));
+  result = data_osect->addr () + xcoff_get_toc_offset (pc_osect->objfile);
+
+  solib_aix_debug_printf ("pc=%s -> %s", core_addr_to_string (pc),
+			  core_addr_to_string (result));
 
   return result;
 }
@@ -737,7 +736,8 @@ _initialize_solib_aix ()
     = solib_aix_in_dynsym_resolve_code;
   solib_aix_so_ops.bfd_open = solib_aix_bfd_open;
 
-  gdb::observers::normal_stop.attach (solib_aix_normal_stop_observer);
+  gdb::observers::normal_stop.attach (solib_aix_normal_stop_observer,
+				      "solib-aix");
 
   /* Debug this file's internals.  */
   add_setshow_boolean_cmd ("aix-solib", class_maintenance,

@@ -37,6 +37,7 @@
 #include "complaints.h"
 #include "dwarf2/frame.h"
 #include "dwarf2/read.h"
+#include "dwarf2/public.h"
 #include "ax.h"
 #include "dwarf2/loc.h"
 #include "dwarf2/frame-tailcall.h"
@@ -1379,6 +1380,7 @@ dwarf2_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind dwarf2_frame_unwind =
 {
+  "dwarf2",
   NORMAL_FRAME,
   dwarf2_frame_unwind_stop_reason,
   dwarf2_frame_this_id,
@@ -1390,6 +1392,7 @@ static const struct frame_unwind dwarf2_frame_unwind =
 
 static const struct frame_unwind dwarf2_signal_frame_unwind =
 {
+  "dwarf2 signal",
   SIGTRAMP_FRAME,
   dwarf2_frame_unwind_stop_reason,
   dwarf2_frame_this_id,

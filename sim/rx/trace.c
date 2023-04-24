@@ -18,8 +18,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
 
-#include "config.h"
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
@@ -34,6 +35,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "cpu.h"
 #include "mem.h"
 #include "load.h"
+#include "trace.h"
 
 static int
 sim_dis_read (bfd_vma memaddr, bfd_byte * ptr, unsigned int length,
@@ -95,7 +97,7 @@ compare_symbols (const PTR ap, const PTR bp)
 
 static char opbuf[1000];
 
-static int
+static int ATTRIBUTE_PRINTF (2, 3)
 op_printf (char *buf, char *fmt, ...)
 {
   int ret;
@@ -139,8 +141,10 @@ load_file_and_line (const char *filename, int lineno)
       break;
   if (!f)
     {
+      FILE *file;
       int i;
       struct stat s;
+      size_t ret;
       const char *found_filename, *slash;
 
       found_filename = filename;
@@ -159,9 +163,9 @@ load_file_and_line (const char *filename, int lineno)
       files = f;
       f->filename = strdup (filename);
       f->data = (char *) malloc (s.st_size + 2);
-      FILE *file = fopen (found_filename, "rb");
-      fread (f->data, 1, s.st_size, file);
-      f->data[s.st_size] = 0;
+      file = fopen (found_filename, "rb");
+      ret = fread (f->data, 1, s.st_size, file);
+      f->data[ret] = 0;
       fclose (file);
 
       f->nlines = 1;

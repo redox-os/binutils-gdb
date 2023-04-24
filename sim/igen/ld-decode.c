@@ -31,10 +31,6 @@
 
 #include "ld-decode.h"
 
-#ifndef NULL
-#define NULL 0
-#endif
-
 
 static const name_map decode_type_map[] = {
   {"normal", normal_decode_rule},
@@ -394,7 +390,7 @@ main (int argc, char **argv)
   lf *l;
   decode_table *rules;
 
-  INIT_OPTIONS (options);
+  INIT_OPTIONS ();
 
   if (argc != 3)
     error (NULL, "Usage: decode <decode-file> <hi-bit-nr>\n");

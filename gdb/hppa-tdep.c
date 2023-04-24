@@ -943,11 +943,7 @@ hppa64_convert_code_addr_to_fptr (struct gdbarch *gdbarch, CORE_ADDR code)
 
   if (opd < sec->objfile->sections_end)
     {
-      CORE_ADDR addr;
-
-      for (addr = obj_section_addr (opd);
-	   addr < obj_section_endaddr (opd);
-	   addr += 2 * 8)
+      for (CORE_ADDR addr = opd->addr (); addr < opd->endaddr (); addr += 2 * 8)
 	{
 	  ULONGEST opdaddr;
 	  gdb_byte tmp[8];
@@ -1990,7 +1986,7 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
 	gdb_byte buf4[4];
 	long inst;
 
-	if (!safe_frame_unwind_memory (this_frame, pc, buf4, sizeof buf4)) 
+	if (!safe_frame_unwind_memory (this_frame, pc, buf4))
 	  {
 	    error (_("Cannot read instruction at %s."),
 		   paddress (gdbarch, pc));
@@ -2156,14 +2152,14 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
      if (get_frame_pc (this_frame) >= prologue_end
 	 && (u->Save_SP || u->alloca_frame) && fp != 0)
       {
- 	cache->base = fp;
+	cache->base = fp;
  
- 	if (hppa_debug)
+	if (hppa_debug)
 	  fprintf_unfiltered (gdb_stdlog, " (base=%s) [frame pointer]",
 			      paddress (gdbarch, cache->base));
       }
      else if (u->Save_SP 
-	      && trad_frame_addr_p (cache->saved_regs, HPPA_SP_REGNUM))
+	      && cache->saved_regs[HPPA_SP_REGNUM].is_addr ())
       {
 	    /* Both we're expecting the SP to be saved and the SP has been
 	       saved.  The entry SP value is saved at this frame's SP
@@ -2184,14 +2180,14 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
 			      paddress (gdbarch, cache->base));
 
       }
-    trad_frame_set_value (cache->saved_regs, HPPA_SP_REGNUM, cache->base);
+    cache->saved_regs[HPPA_SP_REGNUM].set_value (cache->base);
   }
 
   /* The PC is found in the "return register", "Millicode" uses "r31"
      as the return register while normal code uses "rp".  */
   if (u->Millicode)
     {
-      if (trad_frame_addr_p (cache->saved_regs, 31))
+      if (cache->saved_regs[31].is_addr ())
 	{
 	  cache->saved_regs[HPPA_PCOQ_HEAD_REGNUM] = cache->saved_regs[31];
 	  if (hppa_debug)
@@ -2200,14 +2196,14 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
       else
 	{
 	  ULONGEST r31 = get_frame_register_unsigned (this_frame, 31);
-	  trad_frame_set_value (cache->saved_regs, HPPA_PCOQ_HEAD_REGNUM, r31);
+	  cache->saved_regs[HPPA_PCOQ_HEAD_REGNUM].set_value (r31);
 	  if (hppa_debug)
 	    fprintf_unfiltered (gdb_stdlog, " (pc=r31) [frame] } ");
 	}
     }
   else
     {
-      if (trad_frame_addr_p (cache->saved_regs, HPPA_RP_REGNUM))
+      if (cache->saved_regs[HPPA_RP_REGNUM].is_addr ())
 	{
 	  cache->saved_regs[HPPA_PCOQ_HEAD_REGNUM] = 
 	    cache->saved_regs[HPPA_RP_REGNUM];
@@ -2218,7 +2214,7 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
 	{
 	  ULONGEST rp = get_frame_register_unsigned (this_frame,
 						     HPPA_RP_REGNUM);
-	  trad_frame_set_value (cache->saved_regs, HPPA_PCOQ_HEAD_REGNUM, rp);
+	  cache->saved_regs[HPPA_PCOQ_HEAD_REGNUM].set_value (rp);
 	  if (hppa_debug)
 	    fprintf_unfiltered (gdb_stdlog, " (pc=rp) [frame] } ");
 	}
@@ -2238,11 +2234,11 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
      on the stack, but it's been overwritten.  The prologue analyzer will
      set fp_in_r1 when it sees the copy insn so we know to get the value 
      from r1 instead.  */
-  if (u->Save_SP && !trad_frame_addr_p (cache->saved_regs, HPPA_FP_REGNUM)
+  if (u->Save_SP && !cache->saved_regs[HPPA_FP_REGNUM].is_addr ()
       && fp_in_r1)
     {
       ULONGEST r1 = get_frame_register_unsigned (this_frame, 1);
-      trad_frame_set_value (cache->saved_regs, HPPA_FP_REGNUM, r1);
+      cache->saved_regs[HPPA_FP_REGNUM].set_value (r1);
     }
 
   {
@@ -2250,7 +2246,7 @@ hppa_frame_cache (struct frame_info *this_frame, void **this_cache)
     int reg;
     for (reg = 0; reg < gdbarch_num_regs (gdbarch); reg++)
       {
-	if (trad_frame_addr_p (cache->saved_regs, reg))
+	if (cache->saved_regs[reg].is_addr ())
 	  cache->saved_regs[reg].set_addr (cache->saved_regs[reg].addr ()
 					   + cache->base);
       }
@@ -2306,6 +2302,7 @@ hppa_frame_unwind_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind hppa_frame_unwind =
 {
+  "hppa unwind table",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   hppa_frame_this_id,
@@ -2376,9 +2373,9 @@ hppa_fallback_frame_cache (struct frame_info *this_frame, void **this_cache)
 
   cache->base = get_frame_register_unsigned (this_frame, HPPA_SP_REGNUM);
   cache->base -= frame_size;
-  trad_frame_set_value (cache->saved_regs, HPPA_SP_REGNUM, cache->base);
+  cache->saved_regs[HPPA_SP_REGNUM].set_value (cache->base);
 
-  if (trad_frame_addr_p (cache->saved_regs, HPPA_RP_REGNUM))
+  if (cache->saved_regs[HPPA_RP_REGNUM].is_addr ())
     {
       cache->saved_regs[HPPA_RP_REGNUM].set_addr (cache->saved_regs[HPPA_RP_REGNUM].addr ()
 						  + cache->base);
@@ -2389,7 +2386,7 @@ hppa_fallback_frame_cache (struct frame_info *this_frame, void **this_cache)
     {
       ULONGEST rp;
       rp = get_frame_register_unsigned (this_frame, HPPA_RP_REGNUM);
-      trad_frame_set_value (cache->saved_regs, HPPA_PCOQ_HEAD_REGNUM, rp);
+      cache->saved_regs[HPPA_PCOQ_HEAD_REGNUM].set_value (rp);
     }
 
   return cache;
@@ -2418,6 +2415,7 @@ hppa_fallback_frame_prev_register (struct frame_info *this_frame,
 
 static const struct frame_unwind hppa_fallback_frame_unwind =
 {
+  "hppa prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   hppa_fallback_frame_this_id,
@@ -2498,6 +2496,7 @@ hppa_stub_unwind_sniffer (const struct frame_unwind *self,
 }
 
 static const struct frame_unwind hppa_stub_frame_unwind = {
+  "hppa stub",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   hppa_stub_frame_this_id,
@@ -2976,7 +2975,7 @@ hppa_skip_trampoline_code (struct frame_info *frame, CORE_ADDR pc)
       if (in_plt_section (pc))
 	{
 	  /* Sanity check: are we pointing to the PLT stub?  */
-  	  if (!hppa_match_insns (gdbarch, pc, hppa_plt_stub, insn))
+	  if (!hppa_match_insns (gdbarch, pc, hppa_plt_stub, insn))
 	    {
 	      warning (_("Cannot resolve PLT stub at %s."),
 		       paddress (gdbarch, pc));

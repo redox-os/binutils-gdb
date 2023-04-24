@@ -1,10 +1,20 @@
-2021-02-06  Nick Clifton  <nickc@redhat.com>
+2021-07-18  Nick Clifton  <nickc@redhat.com>
 
-	This is the 2.36.1 release.
+	* 2.37 release.
 
-2021-01-24  Nick Clifton  <nickc@redhat.com>
+2021-07-03  Nick Clifton  <nickc@redhat.com>
 
-	This is the 2.36 release.
+	* 2.37 release branch created.
+
+2021-03-19  Cary Coutant  <ccoutant@gmail.com>
+
+	PR gold/27246
+	* dwarf.h (enum DW_LNCT): Add line number table content type codes.
+	(enum DW_LINE_OPS): Reformat.
+	(enum DW_LINE_EXTENDED_OPS): Reformat.
+	(enum DW_CHILDREN): Reformat.
+	(enum DW_RLE): Add range list entry types.
+	(enum DW_SECT): Update values for DWARF 5.
 
 2021-01-09  Nick Clifton  <nickc@redhat.com>
 

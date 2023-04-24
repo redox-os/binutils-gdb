@@ -619,10 +619,14 @@ ac_includes_default="\
 # include <unistd.h>
 #endif"
 
-enable_option_checking=no
 ac_header_list=
+enable_option_checking=no
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+NM_TRANSFORM_NAME
+GAS_TRANSFORM_NAME
+READELF_TRANSFORM_NAME
+STRIP_TRANSFORM_NAME
 GCORE_TRANSFORM_NAME
 GDB_TRANSFORM_NAME
 XSLTPROC
@@ -633,7 +637,7 @@ LIBXXHASH
 HAVE_LIBXXHASH
 CTF_DEPS
 LIBCTF
-ENABLE_LIBCTF
+enable_libctf
 LTLIBBABELTRACE
 LIBBABELTRACE
 HAVE_LIBBABELTRACE
@@ -664,6 +668,7 @@ GDBTKLIBS
 X_LIBS
 X_LDFLAGS
 X_CFLAGS
+subdirs
 TK_XINCLUDES
 TK_DEPS
 TK_LIBRARY
@@ -771,7 +776,7 @@ PKG_CONFIG_PATH
 PKG_CONFIG
 HAVE_NATIVE_GCORE_TARGET
 TARGET_OBS
-subdirs
+RPATH_ENVVAR
 GDB_DATADIR
 DEBUGDIR
 MAKEINFO_EXTRA_FLAGS
@@ -795,6 +800,7 @@ DEPDIR
 am__leading_dot
 CXX_DIALECT
 HAVE_CXX11
+target_noncanonical
 INSTALL_STRIP_PROGRAM
 STRIP
 install_sh
@@ -876,6 +882,7 @@ with_gdb_datadir
 with_relocated_sources
 with_auto_load_dir
 with_auto_load_safe_path
+enable_shared
 enable_targets
 enable_64_bit_bfd
 enable_gdbmi
@@ -911,7 +918,6 @@ enable_source_highlight
 with_intel_pt
 with_libipt_prefix
 with_libipt_type
-with_included_regex
 with_sysroot
 with_system_gdbinit
 with_system_gdbinit_dir
@@ -957,8 +963,7 @@ DEBUGINFOD_LIBS
 YACC
 YFLAGS
 XMKMF'
-ac_subdirs_all='testsuite
-gdbtk'
+ac_subdirs_all='gdbtk'
 
 # Initialize some variables set by options.
 ac_init_help=
@@ -1584,6 +1589,7 @@ Optional Features:
                           sometimes confusing) to the casual installer
   --enable-plugins        Enable support for plugins
   --disable-largefile     omit support for large files
+  --enable-shared         build shared libraries [default=yes]
   --enable-targets=TARGETS
                           alternative target configurations
   --enable-64-bit-bfd     64-bit support (on hosts with narrower word sizes)
@@ -1661,10 +1667,6 @@ Optional Packages:
   --with-libipt-prefix[=DIR]  search for libipt in DIR/include and DIR/lib
   --without-libipt-prefix     don't search for libipt in includedir and libdir
   --with-libipt-type=TYPE     type of library to search for (auto/static/shared)
-  --without-included-regex
-                          don't use included regex; this is the default on
-                          systems with version 2 of the GNU C library (use
-                          with caution on other system)
   --with-sysroot[=DIR]    search for usr/lib et al within DIR
   --with-system-gdbinit=PATH
                           automatically load a system-wide gdbinit file
@@ -2989,6 +2991,7 @@ ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
 
 
 
@@ -5185,6 +5188,24 @@ ac_configure="$SHELL $ac_aux_dir/configure"  # Please don't use this var.
 # Set target, target_cpu, target_vendor, and target_os.
 
 
+ case ${build_alias} in
+  "") build_noncanonical=${build} ;;
+  *) build_noncanonical=${build_alias} ;;
+esac
+
+ case ${host_alias} in
+  "") host_noncanonical=${build_noncanonical} ;;
+  *) host_noncanonical=${host_alias} ;;
+esac
+
+ case ${target_alias} in
+  "") target_noncanonical=${host_noncanonical} ;;
+  *) target_noncanonical=${target_alias} ;;
+esac
+
+
+
+
 test "$program_prefix" != NONE &&
   program_transform_name="s&^&$program_prefix&;$program_transform_name"
 # Use a double $ so make ignores it.
@@ -6602,9 +6623,34 @@ _ACEOF
 { $as_echo "$as_me:${as_lineno-$LINENO}: result: $with_auto_load_safe_path" >&5
 $as_echo "$with_auto_load_safe_path" >&6; }
 
+# Enable shared libraries.
+# Check whether --enable-shared was given.
+if test "${enable_shared+set}" = set; then :
+  enableval=$enable_shared;
+else
+  enable_shared=yes
+fi
 
 
-subdirs="$subdirs testsuite"
+# If we have shared libraries, try to set RPATH_ENVVAR reasonably,
+# such that we can find the shared libraries in the build tree.
+if test $enable_shared = no; then
+  # The variable `RPATH_ENVVAR' itself is not likely to be used on any
+  # platform.
+  RPATH_ENVVAR=RPATH_ENVVAR
+else
+  # The variable `LD_LIBRARY_PATH' is used on most platforms.
+  RPATH_ENVVAR=LD_LIBRARY_PATH
+  # The following exceptions are taken from Libtool 1.4.3.
+  case $host_os in
+    aix*)
+      if test $host_cpu != ia64; then
+        RPATH_ENVVAR=LIBPATH
+      fi ;;
+    darwin* | rhapsody*)
+      RPATH_ENVVAR=DYLD_LIBRARY_PATH ;;
+  esac
+fi
 
 
 # Check whether to support alternative target configurations
@@ -12215,7 +12261,7 @@ fi
 for ac_header in nlist.h machine/reg.h \
                   thread_db.h \
 		  sys/file.h sys/filio.h sys/ioctl.h sys/param.h \
-		  sys/resource.h sys/ptrace.h ptrace.h \
+		  sys/procctl.h sys/resource.h sys/ptrace.h ptrace.h \
 		  sys/reg.h sys/debugreg.h \
 		  termios.h elf_hp.h
 do :
@@ -13823,80 +13869,6 @@ _ACEOF
 fi
 done
 
-
-      ac_fn_c_check_decl "$LINENO" "ADDR_NO_RANDOMIZE" "ac_cv_have_decl_ADDR_NO_RANDOMIZE" "#include <sys/personality.h>
-"
-if test "x$ac_cv_have_decl_ADDR_NO_RANDOMIZE" = xyes; then :
-  ac_have_decl=1
-else
-  ac_have_decl=0
-fi
-
-cat >>confdefs.h <<_ACEOF
-#define HAVE_DECL_ADDR_NO_RANDOMIZE $ac_have_decl
-_ACEOF
-
-
-  if test "$cross_compiling" = yes; then :
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <sys/personality.h>
-int
-main ()
-{
-
-  #      if !HAVE_DECL_ADDR_NO_RANDOMIZE
-  #       define ADDR_NO_RANDOMIZE 0x0040000
-  #      endif
-	 /* Test the flag could be set and stays set.  */
-	 personality (personality (0xffffffff) | ADDR_NO_RANDOMIZE);
-	 if (!(personality (personality (0xffffffff)) & ADDR_NO_RANDOMIZE))
-	     return 1
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_link "$LINENO"; then :
-  have_personality=true
-else
-  have_personality=false
-fi
-rm -f core conftest.err conftest.$ac_objext \
-    conftest$ac_exeext conftest.$ac_ext
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <sys/personality.h>
-int
-main ()
-{
-
-  #      if !HAVE_DECL_ADDR_NO_RANDOMIZE
-  #       define ADDR_NO_RANDOMIZE 0x0040000
-  #      endif
-	 /* Test the flag could be set and stays set.  */
-	 personality (personality (0xffffffff) | ADDR_NO_RANDOMIZE);
-	 if (!(personality (personality (0xffffffff)) & ADDR_NO_RANDOMIZE))
-	     return 1
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_run "$LINENO"; then :
-  have_personality=true
-else
-  have_personality=false
-fi
-rm -f core *.core core.conftest.* gmon.out bb.out conftest$ac_exeext \
-  conftest.$ac_objext conftest.beam conftest.$ac_ext
-fi
-
-  if $have_personality
-  then
-
-$as_echo "#define HAVE_PERSONALITY 1" >>confdefs.h
-
-  fi
 
   ac_fn_c_check_decl "$LINENO" "strstr" "ac_cv_have_decl_strstr" "$ac_includes_default"
 if test "x$ac_cv_have_decl_strstr" = xyes; then :
@@ -15891,60 +15863,6 @@ if test "$ac_cv_func_setpgrp_void" = yes; then
 fi
 fi
 
-# Assume we'll default to using the included libiberty regex.
-gdb_use_included_regex=yes
-
-# However, if the system regex is GNU regex, then default to *not*
-# using the included regex.
-{ $as_echo "$as_me:${as_lineno-$LINENO}: checking for GNU regex" >&5
-$as_echo_n "checking for GNU regex... " >&6; }
-if ${gdb_cv_have_gnu_regex+:} false; then :
-  $as_echo_n "(cached) " >&6
-else
-  cat confdefs.h - <<_ACEOF >conftest.$ac_ext
-/* end confdefs.h.  */
-#include <gnu-versions.h>
-int
-main ()
-{
-#define REGEX_INTERFACE_VERSION 1
-	 #if _GNU_REGEX_INTERFACE_VERSION != REGEX_INTERFACE_VERSION
-	 # error "Version mismatch"
-	 #endif
-
-  ;
-  return 0;
-}
-_ACEOF
-if ac_fn_c_try_compile "$LINENO"; then :
-  gdb_cv_have_gnu_regex=yes
-else
-  gdb_cv_have_gnu_regex=no
-
-fi
-rm -f core conftest.err conftest.$ac_objext conftest.$ac_ext
-
-fi
-{ $as_echo "$as_me:${as_lineno-$LINENO}: result: $gdb_cv_have_gnu_regex" >&5
-$as_echo "$gdb_cv_have_gnu_regex" >&6; }
-if test "$gdb_cv_have_gnu_regex" = yes; then
-  gdb_use_included_regex=no
-fi
-
-
-# Check whether --with-included-regex was given.
-if test "${with_included_regex+set}" = set; then :
-  withval=$with_included_regex; gdb_with_regex=$withval
-else
-  gdb_with_regex=$gdb_use_included_regex
-fi
-
-if test "$gdb_with_regex" = yes; then
-
-$as_echo "#define USE_INCLUDED_REGEX 1" >>confdefs.h
-
-fi
-
 # Check if <sys/proc.h> defines `struct thread' with a td_pcb member.
 ac_fn_c_check_member "$LINENO" "struct thread" "td_pcb" "ac_cv_member_struct_thread_td_pcb" "#include <sys/param.h>
 #include <sys/proc.h>
@@ -16778,6 +16696,12 @@ _ACEOF
 
 
 
+cat >>confdefs.h <<_ACEOF
+#define GDBEARLYINIT ".gdbearlyinit"
+_ACEOF
+
+
+
 # Support for --with-sysroot is a copy of GDB_AC_WITH_DIR,
 # except that the argument to --with-sysroot is optional.
 # --with-sysroot (or --with-sysroot=yes) sets the default sysroot path.
@@ -17264,7 +17188,8 @@ $as_echo "$gdb_cv_var_elf" >&6; }
   LDFLAGS=$OLD_LDFLAGS
   LIBS=$OLD_LIBS
 if test "$gdb_cv_var_elf" = yes; then
-  CONFIG_OBS="$CONFIG_OBS elfread.o stap-probe.o dtrace-probe.o"
+  CONFIG_OBS="$CONFIG_OBS elfread.o stap-probe.o dtrace-probe.o \
+		gcore-elf.o elf-none-tdep.o"
 
 $as_echo "#define HAVE_ELF 1" >>confdefs.h
 
@@ -18400,7 +18325,9 @@ $as_echo "${private_dir}" >&6; }
 	  CONFIG_OBS="${CONFIG_OBS} gdbres.o"
 	fi
 
-        subdirs="$subdirs gdbtk"
+
+
+subdirs="$subdirs gdbtk"
 
     fi
 fi
@@ -19914,6 +19841,44 @@ ac_config_files="$ac_config_files gcore"
 
 ac_config_files="$ac_config_files Makefile gdb-gdb.gdb gdb-gdb.py doc/Makefile data-directory/Makefile"
 
+# Transform the name of some programs for the testsuite/lib/pdtrace
+# test tool.
+
+  gdb_ac_transform=`echo "$program_transform_name" | sed -e 's/\\$\\$/\\$/g'`
+  STRIP_TRANSFORM_NAME=`echo strip | sed -e "$gdb_ac_transform"`
+  if test "x$STRIP_TRANSFORM_NAME" = x; then
+     STRIP_TRANSFORM_NAME=strip
+  fi
+
+
+
+  gdb_ac_transform=`echo "$program_transform_name" | sed -e 's/\\$\\$/\\$/g'`
+  READELF_TRANSFORM_NAME=`echo readelf | sed -e "$gdb_ac_transform"`
+  if test "x$READELF_TRANSFORM_NAME" = x; then
+     READELF_TRANSFORM_NAME=readelf
+  fi
+
+
+
+  gdb_ac_transform=`echo "$program_transform_name" | sed -e 's/\\$\\$/\\$/g'`
+  GAS_TRANSFORM_NAME=`echo as | sed -e "$gdb_ac_transform"`
+  if test "x$GAS_TRANSFORM_NAME" = x; then
+     GAS_TRANSFORM_NAME=as
+  fi
+
+
+
+  gdb_ac_transform=`echo "$program_transform_name" | sed -e 's/\\$\\$/\\$/g'`
+  NM_TRANSFORM_NAME=`echo nm | sed -e "$gdb_ac_transform"`
+  if test "x$NM_TRANSFORM_NAME" = x; then
+     NM_TRANSFORM_NAME=nm
+  fi
+
+
+ac_config_files="$ac_config_files testsuite/lib/pdtrace"
+
+ac_config_files="$ac_config_files testsuite/Makefile"
+
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -20643,6 +20608,8 @@ do
     "gdb-gdb.py") CONFIG_FILES="$CONFIG_FILES gdb-gdb.py" ;;
     "doc/Makefile") CONFIG_FILES="$CONFIG_FILES doc/Makefile" ;;
     "data-directory/Makefile") CONFIG_FILES="$CONFIG_FILES data-directory/Makefile" ;;
+    "testsuite/lib/pdtrace") CONFIG_FILES="$CONFIG_FILES testsuite/lib/pdtrace" ;;
+    "testsuite/Makefile") CONFIG_FILES="$CONFIG_FILES testsuite/Makefile" ;;
 
   *) as_fn_error $? "invalid argument: \`$ac_config_target'" "$LINENO" 5;;
   esac
@@ -21273,6 +21240,7 @@ $as_echo "$as_me: executing $ac_file commands" >&6;}
     "depdir":C) $SHELL $ac_aux_dir/mkinstalldirs $DEPDIR ;;
     "nm.h":L) echo > stamp-nmh ;;
     "gcore":F) chmod +x gcore ;;
+    "testsuite/lib/pdtrace":F) chmod +x testsuite/lib/pdtrace ;;
 
   esac
 done # for ac_tag

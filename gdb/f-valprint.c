@@ -39,11 +39,6 @@
 
 static void f77_get_dynamic_length_of_aggregate (struct type *);
 
-int f77_array_offset_tbl[MAX_FORTRAN_DIMS + 1][2];
-
-/* Array which holds offsets to be applied to get a row's elements
-   for a given array.  Array also holds the size of each subarray.  */
-
 LONGEST
 f77_get_lowerbound (struct type *type)
 {
@@ -223,7 +218,7 @@ f_language::value_print_inner (struct value *val, struct ui_file *stream,
 			       const struct value_print_options *options) const
 {
   struct type *type = check_typedef (value_type (val));
-  struct gdbarch *gdbarch = get_type_arch (type);
+  struct gdbarch *gdbarch = type->arch ();
   int printed_field = 0; /* Number of fields printed.  */
   struct type *elttype;
   CORE_ADDR addr;

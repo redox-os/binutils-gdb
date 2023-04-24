@@ -29,6 +29,9 @@
 #include "gdbsupport/gdb_wait.h"
 #include "inf-ptrace.h"
 #include <sys/types.h>
+#ifdef HAVE_SYS_PROCCTL_H
+#include <sys/procctl.h>
+#endif
 #include <sys/procfs.h>
 #include <sys/ptrace.h>
 #include <sys/signal.h>
@@ -721,6 +724,13 @@ show_fbsd_nat_debug (struct ui_file *file, int from_tty,
 		    value);
 }
 
+#define fbsd_lwp_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (debug_fbsd_lwp, "fbsd-lwp", fmt, ##__VA_ARGS__)
+
+#define fbsd_nat_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (debug_fbsd_nat, "fbsd-nat", fmt, ##__VA_ARGS__)
+
+
 /*
   FreeBSD's first thread support was via a "reentrant" version of libc
   (libc_r) that first shipped in 2.2.7.  This library multiplexed all
@@ -893,10 +903,7 @@ fbsd_add_threads (fbsd_nat_target *target, pid_t pid)
 	  if (pl.pl_flags & PL_FLAG_EXITED)
 	    continue;
 #endif
-	  if (debug_fbsd_lwp)
-	    fprintf_unfiltered (gdb_stdlog,
-				"FLWP: adding thread for LWP %u\n",
-				lwps[i]);
+	  fbsd_lwp_debug_printf ("adding thread for LWP %u", lwps[i]);
 	  add_thread (target, ptid);
 	}
     }
@@ -1037,11 +1044,8 @@ fbsd_nat_target::resume (ptid_t ptid, int step, enum gdb_signal signo)
     return;
 #endif
 
-  if (debug_fbsd_lwp)
-    fprintf_unfiltered (gdb_stdlog,
-			"FLWP: fbsd_resume for ptid (%d, %ld, %ld)\n",
-			ptid.pid (), ptid.lwp (),
-			ptid.tid ());
+  fbsd_lwp_debug_printf ("ptid (%d, %ld, %ld)", ptid.pid (), ptid.lwp (),
+			 ptid.tid ());
   if (ptid.lwp_p ())
     {
       /* If ptid is a specific LWP, suspend all other LWPs in the process.  */
@@ -1129,9 +1133,7 @@ fbsd_handle_debug_trap (fbsd_nat_target *target, ptid_t ptid,
      breakpoint.  */
   if (pl.pl_siginfo.si_code == TRAP_TRACE)
     {
-      if (debug_fbsd_nat)
-	fprintf_unfiltered (gdb_stdlog,
-			    "FNAT: trace trap for LWP %ld\n", ptid.lwp ());
+      fbsd_nat_debug_printf ("trace trap for LWP %ld", ptid.lwp ());
       return true;
     }
 
@@ -1142,10 +1144,7 @@ fbsd_handle_debug_trap (fbsd_nat_target *target, ptid_t ptid,
       struct gdbarch *gdbarch = regcache->arch ();
       int decr_pc = gdbarch_decr_pc_after_break (gdbarch);
 
-      if (debug_fbsd_nat)
-	fprintf_unfiltered (gdb_stdlog,
-			    "FNAT: sw breakpoint trap for LWP %ld\n",
-			    ptid.lwp ());
+      fbsd_nat_debug_printf ("sw breakpoint trap for LWP %ld", ptid.lwp ());
       if (decr_pc != 0)
 	{
 	  CORE_ADDR pc;
@@ -1195,14 +1194,12 @@ fbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 
 	  if (debug_fbsd_nat)
 	    {
-	      fprintf_unfiltered (gdb_stdlog,
-				  "FNAT: stop for LWP %u event %d flags %#x\n",
-				  pl.pl_lwpid, pl.pl_event, pl.pl_flags);
+	      fbsd_nat_debug_printf ("stop for LWP %u event %d flags %#x",
+				     pl.pl_lwpid, pl.pl_event, pl.pl_flags);
 	      if (pl.pl_flags & PL_FLAG_SI)
-		fprintf_unfiltered (gdb_stdlog,
-				    "FNAT: si_signo %u si_code %u\n",
-				    pl.pl_siginfo.si_signo,
-				    pl.pl_siginfo.si_code);
+		fbsd_nat_debug_printf ("si_signo %u si_code %u",
+				       pl.pl_siginfo.si_signo,
+				       pl.pl_siginfo.si_code);
 	    }
 
 #ifdef PT_LWP_EVENTS
@@ -1215,10 +1212,8 @@ fbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 	      thread_info *thr = find_thread_ptid (this, wptid);
 	      if (thr != nullptr)
 		{
-		  if (debug_fbsd_lwp)
-		    fprintf_unfiltered (gdb_stdlog,
-					"FLWP: deleting thread for LWP %u\n",
-					pl.pl_lwpid);
+		  fbsd_lwp_debug_printf ("deleting thread for LWP %u",
+					 pl.pl_lwpid);
 		  if (print_thread_events)
 		    printf_unfiltered (_("[%s exited]\n"),
 				       target_pid_to_str (wptid).c_str ());
@@ -1238,10 +1233,8 @@ fbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 	     event.  */
 	  if (in_thread_list (this, ptid_t (pid)))
 	    {
-	      if (debug_fbsd_lwp)
-		fprintf_unfiltered (gdb_stdlog,
-				    "FLWP: using LWP %u for first thread\n",
-				    pl.pl_lwpid);
+	      fbsd_lwp_debug_printf ("using LWP %u for first thread",
+				     pl.pl_lwpid);
 	      thread_change_ptid (this, ptid_t (pid), wptid);
 	    }
 
@@ -1254,10 +1247,8 @@ fbsd_nat_target::wait (ptid_t ptid, struct target_waitstatus *ourstatus,
 		 BORN events for an already-known LWP.  */
 	      if (!in_thread_list (this, wptid))
 		{
-		  if (debug_fbsd_lwp)
-		    fprintf_unfiltered (gdb_stdlog,
-					"FLWP: adding thread for LWP %u\n",
-					pl.pl_lwpid);
+		  fbsd_lwp_debug_printf ("adding thread for LWP %u",
+					 pl.pl_lwpid);
 		  add_thread (this, wptid);
 		}
 	      ourstatus->kind = TARGET_WAITKIND_SPURIOUS;
@@ -1413,11 +1404,73 @@ fbsd_nat_target::supports_stopped_by_sw_breakpoint ()
 }
 #endif
 
+#ifdef PROC_ASLR_CTL
+class maybe_disable_address_space_randomization
+{
+public:
+  explicit maybe_disable_address_space_randomization (bool disable_randomization)
+  {
+    if (disable_randomization)
+      {
+	if (procctl (P_PID, getpid (), PROC_ASLR_STATUS, &m_aslr_ctl) == -1)
+	  {
+	    warning (_("Failed to fetch current address space randomization "
+		       "status: %s"), safe_strerror (errno));
+	    return;
+	  }
+
+	m_aslr_ctl &= ~PROC_ASLR_ACTIVE;
+	if (m_aslr_ctl == PROC_ASLR_FORCE_DISABLE)
+	  return;
+
+	int ctl = PROC_ASLR_FORCE_DISABLE;
+	if (procctl (P_PID, getpid (), PROC_ASLR_CTL, &ctl) == -1)
+	  {
+	    warning (_("Error disabling address space randomization: %s"),
+		     safe_strerror (errno));
+	    return;
+	  }
+
+	m_aslr_ctl_set = true;
+      }
+  }
+
+  ~maybe_disable_address_space_randomization ()
+  {
+    if (m_aslr_ctl_set)
+      {
+	if (procctl (P_PID, getpid (), PROC_ASLR_CTL, &m_aslr_ctl) == -1)
+	  warning (_("Error restoring address space randomization: %s"),
+		   safe_strerror (errno));
+      }
+  }
+
+  DISABLE_COPY_AND_ASSIGN (maybe_disable_address_space_randomization);
+
+private:
+  bool m_aslr_ctl_set = false;
+  int m_aslr_ctl = 0;
+};
+#endif
+
+void
+fbsd_nat_target::create_inferior (const char *exec_file,
+				  const std::string &allargs,
+				  char **env, int from_tty)
+{
+#ifdef PROC_ASLR_CTL
+  maybe_disable_address_space_randomization restore_aslr_ctl
+    (disable_randomization);
+#endif
+
+  inf_ptrace_target::create_inferior (exec_file, allargs, env, from_tty);
+}
+
 #ifdef TDP_RFPPWAIT
 /* Target hook for follow_fork.  On entry and at return inferior_ptid is
    the ptid of the followed inferior.  */
 
-bool
+void
 fbsd_nat_target::follow_fork (bool follow_child, bool detach_fork)
 {
   if (!follow_child && detach_fork)
@@ -1460,8 +1513,6 @@ fbsd_nat_target::follow_fork (bool follow_child, bool detach_fork)
 	}
 #endif
     }
-
-  return false;
 }
 
 int
@@ -1538,6 +1589,16 @@ bool
 fbsd_nat_target::supports_multi_process ()
 {
   return true;
+}
+
+bool
+fbsd_nat_target::supports_disable_randomization ()
+{
+#ifdef PROC_ASLR_CTL
+  return true;
+#else
+  return false;
+#endif
 }
 
 void _initialize_fbsd_nat ();

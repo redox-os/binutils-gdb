@@ -74,6 +74,12 @@ struct rust_demangler
   /* Rust mangling version, with legacy mangling being -1. */
   int version;
 
+  /* Recursion depth.  */
+  uint recursion;
+  /* Maximum number of times demangle_path may be called recursively.  */
+#define RUST_MAX_RECURSION_COUNT  1024
+#define RUST_NO_RECURSION_LIMIT   ((uint) -1)
+
   uint64_t bound_lifetime_depth;
 };
 
@@ -671,6 +677,15 @@ demangle_path (struct rust_demangler *rdm, int in_value)
   if (rdm->errored)
     return;
 
+  if (rdm->recursion != RUST_NO_RECURSION_LIMIT)
+    {
+      ++ rdm->recursion;
+      if (rdm->recursion > RUST_MAX_RECURSION_COUNT)
+	/* FIXME: There ought to be a way to report
+	   that the recursion limit has been reached.  */
+	goto fail_return;
+    }
+
   switch (tag = next (rdm))
     {
     case 'C':
@@ -688,10 +703,7 @@ demangle_path (struct rust_demangler *rdm, int in_value)
     case 'N':
       ns = next (rdm);
       if (!ISLOWER (ns) && !ISUPPER (ns))
-        {
-          rdm->errored = 1;
-          return;
-        }
+	goto fail_return;
 
       demangle_path (rdm, in_value);
 
@@ -776,9 +788,15 @@ demangle_path (struct rust_demangler *rdm, int in_value)
         }
       break;
     default:
-      rdm->errored = 1;
-      return;
+      goto fail_return;
     }
+  goto pass_return;
+
+ fail_return:
+  rdm->errored = 1;
+ pass_return:
+  if (rdm->recursion != RUST_NO_RECURSION_LIMIT)
+    -- rdm->recursion;
 }
 
 static void
@@ -1253,9 +1271,12 @@ demangle_const_char (struct rust_demangler *rdm)
   else if (value == '\n')
     PRINT ("\\n");
   else if (value > ' ' && value < '~')
-    /* Rust also considers many non-ASCII codepoints to be printable, but
-       that logic is not easily ported to C. */
-    print_str (rdm, (char *) &value, 1);
+    {
+      /* Rust also considers many non-ASCII codepoints to be printable, but
+	 that logic is not easily ported to C. */
+      char c = value;
+      print_str (rdm, &c, 1);
+    }
   else
     {
       PRINT ("\\u{");
@@ -1317,6 +1338,7 @@ rust_demangle_callback (const char *mangled, int options,
   rdm.skipping_printing = 0;
   rdm.verbose = (options & DMGL_VERBOSE) != 0;
   rdm.version = 0;
+  rdm.recursion = (options & DMGL_NO_RECURSE_LIMIT) ? RUST_NO_RECURSION_LIMIT : 0;
   rdm.bound_lifetime_depth = 0;
 
   /* Rust symbols always start with _R (v0) or _ZN (legacy). */

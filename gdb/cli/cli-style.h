@@ -30,7 +30,8 @@ class cli_style_option
 public:
 
   /* Construct a CLI style option with a foreground color.  */
-  cli_style_option (const char *name, ui_file_style::basic_color fg);
+  cli_style_option (const char *name, ui_file_style::basic_color fg,
+		    ui_file_style::intensity = ui_file_style::NORMAL);
 
   /* Construct a CLI style option with an intensity.  */
   cli_style_option (const char *name, ui_file_style::intensity i);
@@ -71,9 +72,6 @@ private:
   /* The intensity.  */
   const char *m_intensity;
 
-  /* Storage for prefixes needed when registering the commands.  */
-  std::string m_show_prefix;
-  std::string m_set_prefix;
   /* Storage for command lists needed when registering
      subcommands.  */
   struct cmd_list_element *m_set_list = nullptr;
@@ -123,6 +121,9 @@ extern cli_style_option tui_border_style;
 
 /* The border style of a TUI window that does have the focus.  */
 extern cli_style_option tui_active_border_style;
+
+/* The style to use for the GDB version string.  */
+extern cli_style_option version_style;
 
 /* True if source styling is enabled.  */
 extern bool source_styling;

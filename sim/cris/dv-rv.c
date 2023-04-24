@@ -18,6 +18,8 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
 
 #include "sim-main.h"
 #include "hw-main.h"
@@ -25,37 +27,19 @@
 #include "hw-tree.h"
 
 #include <ctype.h>
-
-#ifdef HAVE_ERRNO_H
 #include <errno.h>
-#endif
-
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
 #ifdef HAVE_SYS_TYPES_H
 #include <sys/types.h>
 #endif
 
-#ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
-#endif
 
-#ifdef HAVE_SYS_SELECT_H
 #include <sys/select.h>
-#endif
 
 /* Not guarded in dv-sockser.c, so why here.  */
 #include <netinet/in.h>

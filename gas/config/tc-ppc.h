@@ -189,6 +189,23 @@ do {								\
 extern void ppc_xcoff_end (void);
 #define md_end ppc_xcoff_end
 
+#define TC_PARSE_CONS_EXPRESSION(EXP, NBYTES)	\
+  ppc_xcoff_parse_cons (EXP, NBYTES)
+extern bfd_reloc_code_real_type ppc_xcoff_parse_cons (expressionS *,
+						    unsigned int);
+/* XCOFF format allows only few predefined sections. Gather all
+   information in a common structure.  */
+struct ppc_xcoff_section {
+  /* Main segment of the section.  */
+  segT segment;
+
+  /* Next subsegment to allocate within the segment.  */
+  subsegT next_subsegment;
+
+  /* Linked list of csects in the section.  */
+  symbolS *csects;
+};
+
 #endif /* OBJ_XCOFF */
 
 #define tc_new_dot_label(sym) ppc_new_dot_label (sym)
@@ -267,9 +284,26 @@ extern int ppc_force_relocation (struct fix *);
      || (FIX)->fx_r_type == BFD_RELOC_PPC_16DX_HA		\
      || (FIX)->fx_r_type == BFD_RELOC_PPC64_D34			\
      || (FIX)->fx_r_type == BFD_RELOC_PPC64_D28))
-#endif
 
 #define TC_VALIDATE_FIX_SUB(FIX, SEG) 0
+
+#endif /* OBJ_ELF */
+
+#define RELOC_EXPANSION_POSSIBLE
+#define MAX_RELOC_EXPANSION 2
+
+#if defined (OBJ_XCOFF)
+/* Force a relocation when the fix is negative. */
+#define TC_FORCE_RELOCATION_SUB_SAME(FIX, SEG)				\
+  (GENERIC_FORCE_RELOCATION_SUB_SAME(FIX, SEG)				\
+   || (((SEG)->flags & SEC_DEBUGGING) == 0				\
+	&& (FIX)->fx_addsy && (FIX)->fx_subsy				\
+	&& (S_GET_VALUE (fixP->fx_addsy) < S_GET_VALUE (fixP->fx_subsy))))
+
+/* XCOFF allows undefined differences which will be encoded with
+   R_NEG relocations.  */
+#define UNDEFINED_DIFFERENCE_OK
+#endif /* OBJ_XCOFF */
 
 /* Various frobbings of labels and their addresses.  */
 #define md_start_line_hook() ppc_start_line_hook ()

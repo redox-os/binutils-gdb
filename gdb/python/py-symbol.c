@@ -560,7 +560,9 @@ gdbpy_lookup_static_symbols (PyObject *self, PyObject *args, PyObject *kw)
     {
       /* Expand any symtabs that contain potentially matching symbols.  */
       lookup_name_info lookup_name (name, symbol_name_match_type::FULL);
-      expand_symtabs_matching (NULL, lookup_name, NULL, NULL, ALL_DOMAIN);
+      expand_symtabs_matching (NULL, lookup_name, NULL, NULL,
+			       SEARCH_GLOBAL_BLOCK | SEARCH_STATIC_BLOCK,
+			       ALL_DOMAIN);
 
       for (objfile *objfile : current_program_space->objfiles ())
 	{
@@ -617,17 +619,22 @@ del_objfile_symbols (struct objfile *objfile, void *datum)
     }
 }
 
-int
-gdbpy_initialize_symbols (void)
+void _initialize_py_symbol ();
+void
+_initialize_py_symbol ()
 {
-  if (PyType_Ready (&symbol_object_type) < 0)
-    return -1;
-
   /* Register an objfile "free" callback so we can properly
      invalidate symbol when an object file that is about to be
      deleted.  */
   sympy_objfile_data_key
     = register_objfile_data_with_cleanup (NULL, del_objfile_symbols);
+}
+
+int
+gdbpy_initialize_symbols (void)
+{
+  if (PyType_Ready (&symbol_object_type) < 0)
+    return -1;
 
   if (PyModule_AddIntConstant (gdb_module, "SYMBOL_LOC_UNDEF", LOC_UNDEF) < 0
       || PyModule_AddIntConstant (gdb_module, "SYMBOL_LOC_CONST",
@@ -666,6 +673,8 @@ gdbpy_initialize_symbols (void)
 				  VAR_DOMAIN) < 0
       || PyModule_AddIntConstant (gdb_module, "SYMBOL_STRUCT_DOMAIN",
 				  STRUCT_DOMAIN) < 0
+      || PyModule_AddIntConstant (gdb_module, "SYMBOL_LABEL_DOMAIN",
+				  LABEL_DOMAIN) < 0
       || PyModule_AddIntConstant (gdb_module, "SYMBOL_MODULE_DOMAIN",
 				  MODULE_DOMAIN) < 0
       || PyModule_AddIntConstant (gdb_module, "SYMBOL_COMMON_BLOCK_DOMAIN",

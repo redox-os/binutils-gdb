@@ -44,14 +44,14 @@
 
 /* Local functions.  */
 
-static int typecmp (int staticp, int varargs, int nargs,
-		    struct field t1[], struct value *t2[]);
+static int typecmp (bool staticp, bool varargs, int nargs,
+		    struct field t1[], const gdb::array_view<value *> t2);
 
 static struct value *search_struct_field (const char *, struct value *, 
 					  struct type *, int);
 
 static struct value *search_struct_method (const char *, struct value **,
-					   struct value **,
+					   gdb::optional<gdb::array_view<value *>>,
 					   LONGEST, int *, struct type *);
 
 static int find_oload_champ_namespace (gdb::array_view<value *> args,
@@ -415,8 +415,25 @@ value_cast (struct type *type, struct value *arg2)
 
   int convert_to_boolean = 0;
 
-  if (value_type (arg2) == type)
-    return arg2;
+  /* TYPE might be equal in meaning to the existing type of ARG2, but for
+     many reasons, might be a different type object (e.g. TYPE might be a
+     gdbarch owned type, while VALUE_TYPE (ARG2) could be an objfile owned
+     type).
+
+     In this case we want to preserve the LVAL of ARG2 as this allows the
+     resulting value to be used in more places.  We do this by calling
+     VALUE_COPY if appropriate.  */
+  if (types_deeply_equal (value_type (arg2), type))
+    {
+      /* If the types are exactly equal then we can avoid creating a new
+	 value completely.  */
+      if (value_type (arg2) != type)
+	{
+	  arg2 = value_copy (arg2);
+	  deprecated_set_value_type (arg2, type);
+	}
+      return arg2;
+    }
 
   if (is_fixed_point_type (type))
     return value_cast_to_fixed_point (type, arg2);
@@ -590,7 +607,7 @@ value_cast (struct type *type, struct value *arg2)
 	 otherwise occur when dealing with a target having two byte
 	 pointers and four byte addresses.  */
 
-      int addr_bit = gdbarch_addr_bit (get_type_arch (type2));
+      int addr_bit = gdbarch_addr_bit (type2->arch ());
       LONGEST longest = value_as_long (arg2);
 
       if (addr_bit < sizeof (LONGEST) * HOST_CHAR_BIT)
@@ -1040,7 +1057,7 @@ read_value_memory (struct value *val, LONGEST bit_offset,
       enum target_xfer_status status;
       ULONGEST xfered_partial;
 
-      status = target_xfer_partial (current_top_target (),
+      status = target_xfer_partial (current_inferior ()->top_target (),
 				    object, NULL,
 				    buffer + xfered_total * unit_size, NULL,
 				    memaddr + xfered_total,
@@ -1100,7 +1117,7 @@ value_assign (struct value *toval, struct value *fromval)
     {
     case lval_internalvar:
       set_internalvar (VALUE_INTERNALVAR (toval), fromval);
-      return value_of_internalvar (get_type_arch (type),
+      return value_of_internalvar (type->arch (),
 				   VALUE_INTERNALVAR (toval));
 
     case lval_internalvar_component:
@@ -1200,7 +1217,7 @@ value_assign (struct value *toval, struct value *fromval)
 	  {
 	    struct value *parent = value_parent (toval);
 	    LONGEST offset = value_offset (parent) + value_offset (toval);
-	    int changed_len;
+	    size_t changed_len;
 	    gdb_byte buffer[sizeof (LONGEST)];
 	    int optim, unavail;
 
@@ -1209,13 +1226,13 @@ value_assign (struct value *toval, struct value *fromval)
 			   + HOST_CHAR_BIT - 1)
 			  / HOST_CHAR_BIT;
 
-	    if (changed_len > (int) sizeof (LONGEST))
+	    if (changed_len > sizeof (LONGEST))
 	      error (_("Can't handle bitfields which "
 		       "don't fit in a %d bit word."),
 		     (int) sizeof (LONGEST) * HOST_CHAR_BIT);
 
 	    if (!get_frame_register_bytes (frame, value_reg, offset,
-					   changed_len, buffer,
+					   {buffer, changed_len},
 					   &optim, &unavail))
 	      {
 		if (optim)
@@ -1230,7 +1247,7 @@ value_assign (struct value *toval, struct value *fromval)
 			  value_bitpos (toval), value_bitsize (toval));
 
 	    put_frame_register_bytes (frame, value_reg, offset,
-				      changed_len, buffer);
+				      {buffer, changed_len});
 	  }
 	else
 	  {
@@ -1246,10 +1263,12 @@ value_assign (struct value *toval, struct value *fromval)
 	      }
 	    else
 	      {
+		gdb::array_view<const gdb_byte> contents
+		  = gdb::make_array_view (value_contents (fromval),
+					  TYPE_LENGTH (type));
 		put_frame_register_bytes (frame, value_reg,
 					  value_offset (toval),
-					  TYPE_LENGTH (type),
-					  value_contents (fromval));
+					  contents);
 	      }
 	  }
 
@@ -1284,7 +1303,8 @@ value_assign (struct value *toval, struct value *fromval)
     case lval_register:
     case lval_computed:
 
-      gdb::observers::target_changed.notify (current_top_target ());
+      gdb::observers::target_changed.notify
+	(current_inferior ()->top_target ());
 
       /* Having destroyed the frame cache, restore the selected
 	 frame.  */
@@ -1765,15 +1785,15 @@ value_string (const char *ptr, ssize_t len, struct type *char_type)
 }
 
 
-/* See if we can pass arguments in T2 to a function which takes
-   arguments of types T1.  T1 is a list of NARGS arguments, and T2 is
-   a NULL-terminated vector.  If some arguments need coercion of some
-   sort, then the coerced values are written into T2.  Return value is
+/* See if we can pass arguments in T2 to a function which takes arguments
+   of types T1.  T1 is a list of NARGS arguments, and T2 is an array_view
+   of the values we're trying to pass.  If some arguments need coercion of
+   some sort, then the coerced values are written into T2.  Return value is
    0 if the arguments could be matched, or the position at which they
    differ if not.
 
    STATICP is nonzero if the T1 argument list came from a static
-   member function.  T2 will still include the ``this'' pointer, but
+   member function.  T2 must still include the ``this'' pointer, but
    it will be skipped.
 
    For non-static member functions, we ignore the first argument,
@@ -1783,19 +1803,15 @@ value_string (const char *ptr, ssize_t len, struct type *char_type)
    requested operation is type secure, shouldn't we?  FIXME.  */
 
 static int
-typecmp (int staticp, int varargs, int nargs,
-	 struct field t1[], struct value *t2[])
+typecmp (bool staticp, bool varargs, int nargs,
+	 struct field t1[], gdb::array_view<value *> t2)
 {
   int i;
-
-  if (t2 == 0)
-    internal_error (__FILE__, __LINE__, 
-		    _("typecmp: no argument list"));
 
   /* Skip ``this'' argument if applicable.  T2 will always include
      THIS.  */
   if (staticp)
-    t2 ++;
+    t2 = t2.slice (1);
 
   for (i = 0;
        (i < nargs) && t1[i].type ()->code () != TYPE_CODE_VOID;
@@ -1803,7 +1819,7 @@ typecmp (int staticp, int varargs, int nargs,
     {
       struct type *tt1, *tt2;
 
-      if (!t2[i])
+      if (i == t2.size ())
 	return i + 1;
 
       tt1 = check_typedef (t1[i].type ());
@@ -1848,7 +1864,7 @@ typecmp (int staticp, int varargs, int nargs,
       if (t1[i].type ()->code () != value_type (t2[i])->code ())
 	return i + 1;
     }
-  if (varargs || t2[i] == NULL)
+  if (varargs || i == t2.size ())
     return 0;
   return i + 1;
 }
@@ -2161,13 +2177,18 @@ search_struct_field (const char *name, struct value *arg1,
    ARG1 by OFFSET bytes, and search in it assuming it has (class) type
    TYPE.
 
+   ARGS is an optional array of argument values used to help finding NAME.
+   The contents of ARGS can be adjusted if type coercion is required in
+   order to find a matching NAME.
+
    If found, return value, else if name matched and args not return
    (value) -1, else return NULL.  */
 
 static struct value *
 search_struct_method (const char *name, struct value **arg1p,
-		      struct value **args, LONGEST offset,
-		      int *static_memfuncp, struct type *type)
+		      gdb::optional<gdb::array_view<value *>> args,
+		      LONGEST offset, int *static_memfuncp,
+		      struct type *type)
 {
   int i;
   struct value *v;
@@ -2185,10 +2206,10 @@ search_struct_method (const char *name, struct value **arg1p,
 
 	  name_matched = 1;
 	  check_stub_method_group (type, i);
-	  if (j > 0 && args == 0)
+	  if (j > 0 && !args.has_value ())
 	    error (_("cannot resolve overloaded method "
 		     "`%s': no arguments supplied"), name);
-	  else if (j == 0 && args == 0)
+	  else if (j == 0 && !args.has_value ())
 	    {
 	      v = value_fn_field (arg1p, f, j, type, offset);
 	      if (v != NULL)
@@ -2197,10 +2218,11 @@ search_struct_method (const char *name, struct value **arg1p,
 	  else
 	    while (j >= 0)
 	      {
+		gdb_assert (args.has_value ());
 		if (!typecmp (TYPE_FN_FIELD_STATIC_P (f, j),
 			      TYPE_FN_FIELD_TYPE (f, j)->has_varargs (),
 			      TYPE_FN_FIELD_TYPE (f, j)->num_fields (),
-			      TYPE_FN_FIELD_ARGS (f, j), args))
+			      TYPE_FN_FIELD_ARGS (f, j), *args))
 		  {
 		    if (TYPE_FN_FIELD_VIRTUAL_P (f, j))
 		      return value_virtual_fn_field (arg1p, f, j, 
@@ -2299,7 +2321,8 @@ search_struct_method (const char *name, struct value **arg1p,
    found.  */
 
 struct value *
-value_struct_elt (struct value **argp, struct value **args,
+value_struct_elt (struct value **argp,
+		  gdb::optional<gdb::array_view<value *>> args,
 		  const char *name, int *static_memfuncp, const char *err)
 {
   struct type *t;
@@ -2329,7 +2352,7 @@ value_struct_elt (struct value **argp, struct value **args,
   if (static_memfuncp)
     *static_memfuncp = 0;
 
-  if (!args)
+  if (!args.has_value ())
     {
       /* if there are no arguments ...do this...  */
 
@@ -2341,7 +2364,7 @@ value_struct_elt (struct value **argp, struct value **args,
 
       /* C++: If it was not found as a data field, then try to
 	 return it as a pointer to a method.  */
-      v = search_struct_method (name, argp, args, 0, 
+      v = search_struct_method (name, argp, args, 0,
 				static_memfuncp, t);
 
       if (v == (struct value *) - 1)
@@ -2356,9 +2379,9 @@ value_struct_elt (struct value **argp, struct value **args,
       return v;
     }
 
-  v = search_struct_method (name, argp, args, 0, 
+  v = search_struct_method (name, argp, args, 0,
 			    static_memfuncp, t);
-  
+
   if (v == (struct value *) - 1)
     {
       error (_("One of the arguments you tried to pass to %s could not "
@@ -3310,7 +3333,7 @@ enum_constant_from_type (struct type *type, const char *name)
   int name_len = strlen (name);
 
   gdb_assert (type->code () == TYPE_CODE_ENUM
-	      && TYPE_DECLARED_CLASS (type));
+	      && type->is_declared_class ());
 
   for (i = TYPE_N_BASECLASSES (type); i < type->num_fields (); ++i)
     {

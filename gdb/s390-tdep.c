@@ -39,6 +39,7 @@
 #include "target-descriptions.h"
 #include "trad-frame.h"
 #include "value.h"
+#include "inferior.h"
 
 #include "features/s390-linux32.c"
 #include "features/s390x-linux64.c"
@@ -684,8 +685,8 @@ s390_load (struct s390_prologue_data *data,
      we're analyzing the code to unwind past that frame.  */
   if (pv_is_constant (addr))
     {
-      struct target_section *secp;
-      secp = target_section_by_addr (current_top_target (), addr.k);
+      const struct target_section *secp
+	= target_section_by_addr (current_inferior ()->top_target (), addr.k);
       if (secp != NULL
 	  && (bfd_section_flags (secp->the_bfd_section) & SEC_READONLY))
 	return pv_constant (read_memory_integer (addr.k, size,
@@ -2451,10 +2452,10 @@ s390_prologue_frame_unwind_cache (struct frame_info *this_frame,
   /* Set up ABI call-saved/call-clobbered registers.  */
   for (i = 0; i < S390_NUM_REGS; i++)
     if (!s390_register_call_saved (gdbarch, i))
-      trad_frame_set_unknown (info->saved_regs, i);
+      info->saved_regs[i].set_unknown ();
 
   /* CC is always call-clobbered.  */
-  trad_frame_set_unknown (info->saved_regs, S390_PSWM_REGNUM);
+  info->saved_regs[S390_PSWM_REGNUM].set_unknown ();
 
   /* Record the addresses of all register spill slots the prologue parser
      has recognized.  Consider only registers defined as call-saved by the
@@ -2479,7 +2480,7 @@ s390_prologue_frame_unwind_cache (struct frame_info *this_frame,
      save area, use that -- we might only think the function frameless
      because we're in the middle of the prologue ...  */
   if (size == 0
-      && !trad_frame_addr_p (info->saved_regs, S390_PSWA_REGNUM))
+      && !info->saved_regs[S390_PSWA_REGNUM].is_addr ())
     {
       info->saved_regs[S390_PSWA_REGNUM].set_realreg (S390_RETADDR_REGNUM);
     }
@@ -2490,8 +2491,8 @@ s390_prologue_frame_unwind_cache (struct frame_info *this_frame,
      libc's thread_start routine.  */
   if (size > 0)
     {
-      if (!trad_frame_addr_p (info->saved_regs, S390_SP_REGNUM)
-	  || !trad_frame_addr_p (info->saved_regs, S390_PSWA_REGNUM))
+      if (!info->saved_regs[S390_SP_REGNUM].is_addr ()
+	  || !info->saved_regs[S390_PSWA_REGNUM].is_addr ())
 	prev_sp = -1;
     }
 
@@ -2524,10 +2525,10 @@ s390_backchain_frame_unwind_cache (struct frame_info *this_frame,
   /* Set up ABI call-saved/call-clobbered registers.  */
   for (i = 0; i < S390_NUM_REGS; i++)
     if (!s390_register_call_saved (gdbarch, i))
-      trad_frame_set_unknown (info->saved_regs, i);
+      info->saved_regs[i].set_unknown ();
 
   /* CC is always call-clobbered.  */
-  trad_frame_set_unknown (info->saved_regs, S390_PSWM_REGNUM);
+  info->saved_regs[S390_PSWM_REGNUM].set_unknown ();
 
   /* Get the backchain.  */
   reg = get_frame_register_unsigned (this_frame, S390_SP_REGNUM);
@@ -2633,6 +2634,7 @@ s390_frame_prev_register (struct frame_info *this_frame,
 /* Default S390 frame unwinder.  */
 
 static const struct frame_unwind s390_frame_unwind = {
+  "s390 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   s390_frame_this_id,
@@ -2726,6 +2728,7 @@ s390_stub_frame_sniffer (const struct frame_unwind *self,
 /* S390 stub frame unwinder.  */
 
 static const struct frame_unwind s390_stub_frame_unwind = {
+  "s390 stub",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   s390_stub_frame_this_id,
@@ -7142,12 +7145,12 @@ s390_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
      cause GDB to crash with an internal error when the user tries to set
      an unsupported OSABI.  */
   if (!tdesc_has_registers (tdesc))
-  {
-    if (info.bfd_arch_info->mach == bfd_mach_s390_31)
-      tdesc = tdesc_s390_linux32;
-    else
-      tdesc = tdesc_s390x_linux64;
-  }
+    {
+      if (info.bfd_arch_info->mach == bfd_mach_s390_31)
+	tdesc = tdesc_s390_linux32;
+      else
+	tdesc = tdesc_s390x_linux64;
+    }
   tdep->tdesc = tdesc;
 
   /* Check any target description for validity.  */

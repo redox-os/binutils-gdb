@@ -131,19 +131,21 @@ fillup (unsigned char *ptr)
 }
 
 static barray
-getBARRAY (unsigned char *ptr, int *idx, int dsize ATTRIBUTE_UNUSED,
-	   int max ATTRIBUTE_UNUSED)
+getBARRAY (unsigned char *ptr, int *idx, int dsize ATTRIBUTE_UNUSED, int max)
 {
   barray res;
   int i;
   int byte = *idx / 8;
-  int size = ptr[byte++];
+  int size = 0;
+
+  if (byte < max)
+    size = ptr[byte++];
 
   res.len = size;
   res.data = (unsigned char *) xmalloc (size);
 
   for (i = 0; i < size; i++)
-    res.data[i] = ptr[byte++];
+    res.data[i] = byte < max ? ptr[byte++] : 0;
 
   return res;
 }
@@ -179,7 +181,8 @@ getINT (unsigned char *ptr, int *idx, int size, int max)
       n = (ptr[byte + 0] << 8) + ptr[byte + 1];
       break;
     case 4:
-      n = (ptr[byte + 0] << 24) + (ptr[byte + 1] << 16) + (ptr[byte + 2] << 8) + (ptr[byte + 3]);
+      n = (((unsigned) ptr[byte + 0] << 24) + (ptr[byte + 1] << 16)
+	   + (ptr[byte + 2] << 8) + (ptr[byte + 3]));
       break;
     default:
       fatal (_("Unsupported read size: %d"), size);
@@ -659,12 +662,10 @@ main (int ac, char **av)
     {NULL, no_argument, 0, 0}
   };
 
-#if defined (HAVE_SETLOCALE) && defined (HAVE_LC_MESSAGES)
+#ifdef HAVE_LC_MESSAGES
   setlocale (LC_MESSAGES, "");
 #endif
-#if defined (HAVE_SETLOCALE)
   setlocale (LC_CTYPE, "");
-#endif
   bindtextdomain (PACKAGE, LOCALEDIR);
   textdomain (PACKAGE);
 

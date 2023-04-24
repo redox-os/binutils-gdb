@@ -18,9 +18,8 @@ dnl along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 dnl Process this file with autoconf to produce a configure script.
 
-m4_include(../config/debuginfod.m4)
-
 AC_INIT
+AC_CONFIG_MACRO_DIRS([../config])
 AC_CONFIG_SRCDIR([main.c])
 AC_CONFIG_HEADERS(config.h:config.in, [echo > stamp-h])
 AM_MAINTAINER_MODE
@@ -42,6 +41,8 @@ AC_CANONICAL_HOST
 
 # Set target, target_cpu, target_vendor, and target_os.
 AC_CANONICAL_TARGET
+
+ACX_NONCANONICAL_TARGET
 
 AC_ARG_PROGRAM
 
@@ -152,7 +153,31 @@ AC_DEFINE_DIR(AUTO_LOAD_SAFE_PATH, escape_dir,
 	      [Directories safe to hold auto-loaded files.])
 AC_MSG_RESULT([$with_auto_load_safe_path])
 
-AC_CONFIG_SUBDIRS(testsuite)
+# Enable shared libraries.
+AC_ARG_ENABLE(shared,
+AS_HELP_STRING([--enable-shared], [build shared libraries [default=yes]]),,
+  enable_shared=yes)
+
+# If we have shared libraries, try to set RPATH_ENVVAR reasonably,
+# such that we can find the shared libraries in the build tree.
+if test $enable_shared = no; then
+  # The variable `RPATH_ENVVAR' itself is not likely to be used on any
+  # platform.
+  RPATH_ENVVAR=RPATH_ENVVAR
+else
+  # The variable `LD_LIBRARY_PATH' is used on most platforms.
+  RPATH_ENVVAR=LD_LIBRARY_PATH
+  # The following exceptions are taken from Libtool 1.4.3.
+  case $host_os in
+    aix*)
+      if test $host_cpu != ia64; then
+        RPATH_ENVVAR=LIBPATH
+      fi ;;
+    darwin* | rhapsody*)
+      RPATH_ENVVAR=DYLD_LIBRARY_PATH ;;
+  esac
+fi
+AC_SUBST(RPATH_ENVVAR)
 
 # Check whether to support alternative target configurations
 AC_ARG_ENABLE(targets,
@@ -1272,7 +1297,7 @@ AC_HEADER_STDC
 AC_CHECK_HEADERS([nlist.h machine/reg.h \
                   thread_db.h \
 		  sys/file.h sys/filio.h sys/ioctl.h sys/param.h \
-		  sys/resource.h sys/ptrace.h ptrace.h \
+		  sys/procctl.h sys/resource.h sys/ptrace.h ptrace.h \
 		  sys/reg.h sys/debugreg.h \
 		  termios.h elf_hp.h])
 AC_CHECK_HEADERS(sys/user.h, [], [],
@@ -1361,39 +1386,6 @@ else
 if test "$ac_cv_func_setpgrp_void" = yes; then
   AC_DEFINE(SETPGRP_VOID, 1)
 fi
-fi
-
-# Assume we'll default to using the included libiberty regex.
-gdb_use_included_regex=yes
-
-# However, if the system regex is GNU regex, then default to *not*
-# using the included regex.
-AC_CACHE_CHECK(
-  [for GNU regex],
-  [gdb_cv_have_gnu_regex],
-  [AC_COMPILE_IFELSE(
-     [AC_LANG_PROGRAM(
-	[#include <gnu-versions.h>],
-	[#define REGEX_INTERFACE_VERSION 1
-	 #if _GNU_REGEX_INTERFACE_VERSION != REGEX_INTERFACE_VERSION
-	 # error "Version mismatch"
-	 #endif]
-      )],
-     [gdb_cv_have_gnu_regex=yes],
-     [gdb_cv_have_gnu_regex=no]
-   )]
-)
-if test "$gdb_cv_have_gnu_regex" = yes; then
-  gdb_use_included_regex=no
-fi
-
-AC_ARG_WITH(included-regex,
-  AS_HELP_STRING([--without-included-regex], [don't use included regex; this is the default on systems with version 2 of the GNU C library (use with caution on other system)]),
-  gdb_with_regex=$withval,
-  gdb_with_regex=$gdb_use_included_regex)
-if test "$gdb_with_regex" = yes; then
-  AC_DEFINE(USE_INCLUDED_REGEX, 1,
-    [Define to 1 if the regex included in libiberty should be used.])
 fi
 
 # Check if <sys/proc.h> defines `struct thread' with a td_pcb member.
@@ -1819,6 +1811,9 @@ case $host_os in
 esac
 AC_DEFINE_UNQUOTED(GDBINIT,"$gdbinit",[The .gdbinit filename.])
 
+dnl Set the host's .gdbearlyinit filename
+AC_DEFINE_UNQUOTED(GDBEARLYINIT,".gdbearlyinit",[The .gdbearlyinit filename.])
+
 dnl Handle optional features that can be enabled.
 
 # Support for --with-sysroot is a copy of GDB_AC_WITH_DIR,
@@ -1882,7 +1877,8 @@ WIN32LIBS="$WIN32LIBS $WIN32APILIBS"
 GDB_AC_CHECK_BFD([for ELF support in BFD], gdb_cv_var_elf,
                  [bfd_get_elf_phdr_upper_bound (NULL)], elf-bfd.h)
 if test "$gdb_cv_var_elf" = yes; then
-  CONFIG_OBS="$CONFIG_OBS elfread.o stap-probe.o dtrace-probe.o"
+  CONFIG_OBS="$CONFIG_OBS elfread.o stap-probe.o dtrace-probe.o \
+		gcore-elf.o elf-none-tdep.o"
   AC_DEFINE(HAVE_ELF, 1,
 	    [Define if ELF support should be included.])
   # -ldl is provided by bfd/Makfile.am (LIBDL) <PLUGINS>.
@@ -2199,7 +2195,7 @@ else
   LIBCTF=
   CTF_DEPS=
 fi
-AC_SUBST(ENABLE_LIBCTF)
+AC_SUBST(enable_libctf)
 AC_SUBST(LIBCTF)
 AC_SUBST(CTF_DEPS)
 
@@ -2265,5 +2261,13 @@ GDB_AC_TRANSFORM([gdb], [GDB_TRANSFORM_NAME])
 GDB_AC_TRANSFORM([gcore], [GCORE_TRANSFORM_NAME])
 AC_CONFIG_FILES([gcore], [chmod +x gcore])
 AC_CONFIG_FILES([Makefile gdb-gdb.gdb gdb-gdb.py doc/Makefile data-directory/Makefile])
+# Transform the name of some programs for the testsuite/lib/pdtrace
+# test tool.
+GDB_AC_TRANSFORM(strip, STRIP_TRANSFORM_NAME)
+GDB_AC_TRANSFORM(readelf, READELF_TRANSFORM_NAME)
+GDB_AC_TRANSFORM(as, GAS_TRANSFORM_NAME)
+GDB_AC_TRANSFORM(nm, NM_TRANSFORM_NAME)
+AC_CONFIG_FILES([testsuite/lib/pdtrace], [chmod +x testsuite/lib/pdtrace])
+AC_CONFIG_FILES([testsuite/Makefile])
 
 AC_OUTPUT

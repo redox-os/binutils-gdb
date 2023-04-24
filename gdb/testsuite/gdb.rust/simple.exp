@@ -64,6 +64,7 @@ gdb_test "print j2" " = simple::Unit"
 gdb_test "ptype j2" " = struct simple::Unit"
 gdb_test "print simple::Unit" " = simple::Unit"
 gdb_test "print simple::Unit{}" " = simple::Unit"
+gdb_test "print simple::Unit{23}" "'}', '\.\.', or identifier expected"
 
 gdb_test "print f" " = \"hi bob\""
 gdb_test "print fslice" " = \"bob\""
@@ -88,7 +89,9 @@ gdb_test "print w\[2\] @ 2" " = \\\[3, 4\\\]"
 gdb_test "print w_ptr\[2\]" " = 3"
 gdb_test "print fromslice" " = 3"
 gdb_test "print slice\[0\]" " = 3"
-gdb_test "print slice as &\[i32\]\[0\]" " = 3"
+gdb_test "print (slice as &\[i32\])\[0\]" " = 3"
+
+gdb_test "print slice as \[i32; 73.9\]" "integer expected"
 
 gdb_test_sequence "ptype slice" "" {
     " = struct &\\\[i32\\\] \\{"
@@ -131,6 +134,11 @@ gdb_test_sequence "ptype z" "" {
 }
 gdb_test "print z.1" " = 8"
 
+# Some error checks.
+gdb_test "print z.1_0" \
+    "'_' not allowed in integers in anonymous field references"
+gdb_test "print z.mut" "field name expected"
+
 gdb_test "print univariant" " = simple::Univariant::Foo{a: 1}"
 gdb_test "print univariant.a" " = 1"
 gdb_test "print univariant_anon" " = simple::UnivariantAnon::Foo\\(1\\)"
@@ -165,7 +173,7 @@ gdb_test "print simple::HiBob(0xff, 5)" \
     "Type simple::HiBob is not a tuple struct"
 gdb_test "print sizeof(simple::HiBob)" " = \[0-9\]+"
 gdb_test "print simple::HiBob + 5" \
-    "Found type 'simple::HiBob', which can't be evaluated in this context"
+    "Attempt to use a type name as an expression"
 gdb_test "print nosuchsymbol" \
     "No symbol 'nosuchsymbol' in current context"
 
@@ -187,6 +195,9 @@ gdb_test_sequence "ptype e" "" {
     "  Four\\{this: bool, is: u8, a: char, struct_: u64, variant: u32\\},"
     "\\}"
 }
+
+# Test a parser error.
+gdb_test "print sizeof e" "'\\(' expected"
 
 gdb_test "print e.0" " = 73"
 gdb_test "print e.1" \
@@ -221,6 +232,10 @@ gdb_test "ptype diff2" "fn \\(i32, i32\\) -> i32"
 gdb_test "ptype empty" "fn \\(\\)"
 
 gdb_test "print (diff2 as fn(i32, i32) -> i32)(19, -2)" " = 21"
+
+gdb_test "print diff2(73, 74 75" "',' or '\\\)' expected"
+gdb_test "print (diff2 as fn i32, i32) -> i32)(19, -2)" "'\\\(' expected"
+gdb_test "print (diff2 as fn (i32, i32) i32)(19, -2)" "'->' expected"
 
 gdb_test "print \"hello rust\"" " = \"hello rust.*\""
 gdb_test "print \"hello" "Unexpected EOF in string"
@@ -335,6 +350,10 @@ gdb_test "print (1,2,3)" "Tuple expressions not supported yet"
 gdb_test "print (1,)" "Tuple expressions not supported yet"
 gdb_test "print (1)" " = 1"
 
+# Test a syntax error in tuple expressions.
+gdb_test "print (1,2,," "unexpected token"
+gdb_test "print (1,2 8" "',' or '\\\)' expected"
+
 gdb_test "print 23..97.0" "Range expression with different types"
 
 gdb_test "print (*parametrized.next.val)" \
@@ -345,12 +364,12 @@ gdb_test "print parametrized" \
     " = simple::ParametrizedStruct<i32> \\{next: simple::ParametrizedEnum<\[a-z:\]*Box<simple::ParametrizedStruct<i32>.*>>::Val\\{val: $hex\\}, value: 0\\}"
 
 gdb_test_sequence "ptype/o SimpleLayout" "" {
-    "/\\* offset    |  size \\*/  type = struct simple::SimpleLayout {"
-    "/\\*    0      |     2 \\*/    f1: u16,"
-    "/\\*    2      |     2 \\*/    f2: u16,"
+    "/\\* offset      |    size \\*/  type = struct simple::SimpleLayout {"
+    "/\\*      0      |       2 \\*/    f1: u16,"
+    "/\\*      2      |       2 \\*/    f2: u16,"
     ""
-    "                           /\\* total size \\(bytes\\):    4 \\*/"
-    "                         }"
+    "                               /\\* total size \\(bytes\\):    4 \\*/"
+    "                             }"
 }
 
 gdb_test "print nonzero_offset" " = simple::EnumWithNonzeroOffset {a: core::option::Option<u8>::Some\\(1\\), b: core::option::Option<u8>::None}"

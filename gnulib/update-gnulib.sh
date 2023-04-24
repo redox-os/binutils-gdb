@@ -32,14 +32,19 @@
 IMPORTED_GNULIB_MODULES="\
     alloca \
     canonicalize-lgpl \
+    chown \
     count-one-bits \
     dirent \
     dirfd \
     errno \
+    ffs \
     fnmatch-gnu \
     frexpl \
+    gendocs \
     getcwd \
+    getline \
     gettimeofday \
+    gitlog-to-changelog \
     glob \
     inet_ntop
     inttypes \
@@ -50,10 +55,12 @@ IMPORTED_GNULIB_MODULES="\
     mkdir \
     mkdtemp \
     mkostemp \
+    netdb \
     pathmax \
     rawmemchr \
     readlink \
     rename \
+    select \
     setenv \
     signal-h \
     strchrnul \
@@ -70,7 +77,7 @@ IMPORTED_GNULIB_MODULES="\
 "
 
 # The gnulib commit ID to use for the update.
-GNULIB_COMMIT_SHA1="4e3f2d4cfdba14e1d89479362061a9280f2f22b6"
+GNULIB_COMMIT_SHA1="776af40e09b476a41073131a90022572f448c189"
 
 # The expected version number for the various auto tools we will
 # use after the import.

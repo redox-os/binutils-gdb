@@ -1037,7 +1037,7 @@ avr_frame_unwind_cache (struct frame_info *this_frame,
   /* Adjust all the saved registers so that they contain addresses and not
      offsets.  */
   for (i = 0; i < gdbarch_num_regs (gdbarch) - 1; i++)
-    if (info->saved_regs[i].addr () > 0)
+    if (info->saved_regs[i].is_addr ())
       info->saved_regs[i].set_addr (info->prev_sp
 				    - info->saved_regs[i].addr ());
 
@@ -1050,8 +1050,8 @@ avr_frame_unwind_cache (struct frame_info *this_frame,
   /* The previous frame's SP needed to be computed.  Save the computed
      value.  */
   tdep = gdbarch_tdep (gdbarch);
-  trad_frame_set_value (info->saved_regs, AVR_SP_REGNUM,
-			info->prev_sp - 1 + tdep->call_length);
+  info->saved_regs[AVR_SP_REGNUM].set_value (info->prev_sp
+					     - 1 + tdep->call_length);
 
   return info;
 }
@@ -1113,7 +1113,7 @@ avr_frame_prev_register (struct frame_info *this_frame,
 
   if (regnum == AVR_PC_REGNUM || regnum == AVR_PSEUDO_PC_REGNUM)
     {
-      if (trad_frame_addr_p (info->saved_regs, AVR_PC_REGNUM))
+      if (info->saved_regs[AVR_PC_REGNUM].is_addr ())
 	{
 	  /* Reading the return PC from the PC register is slightly
 	     abnormal.  register_size(AVR_PC_REGNUM) says it is 4 bytes,
@@ -1154,6 +1154,7 @@ avr_frame_prev_register (struct frame_info *this_frame,
 }
 
 static const struct frame_unwind avr_frame_unwind = {
+  "avr prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   avr_frame_this_id,
@@ -1561,7 +1562,8 @@ avr_io_reg_read_command (const char *args, int from_tty)
 
   /* Find out how many io registers the target has.  */
   gdb::optional<gdb::byte_vector> buf
-    = target_read_alloc (current_top_target (), TARGET_OBJECT_AVR, "avr.io_reg");
+    = target_read_alloc (current_inferior ()->top_target (),
+			 TARGET_OBJECT_AVR, "avr.io_reg");
 
   if (!buf)
     {
@@ -1595,7 +1597,8 @@ avr_io_reg_read_command (const char *args, int from_tty)
 	j = nreg - i;           /* last block is less than 8 registers */
 
       snprintf (query, sizeof (query) - 1, "avr.io_reg:%x,%x", i, j);
-      buf = target_read_alloc (current_top_target (), TARGET_OBJECT_AVR, query);
+      buf = target_read_alloc (current_inferior ()->top_target (),
+			       TARGET_OBJECT_AVR, query);
 
       if (!buf)
 	{

@@ -25,6 +25,7 @@
 #include "regcache.h"
 #include "symtab.h"
 #include "trad-frame.h"
+#include "inferior.h"
 
 #include "obsd-tdep.h"
 #include "sparc-tdep.h"
@@ -135,6 +136,7 @@ sparc32obsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
 }
 static const struct frame_unwind sparc32obsd_sigtramp_frame_unwind =
 {
+  "sparc32 openbsd sigtramp",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   sparc32obsd_sigtramp_frame_this_id,
@@ -157,6 +159,9 @@ sparc32obsd_supply_uthread (struct regcache *regcache,
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR fp, fp_addr = addr + SPARC32OBSD_UTHREAD_FP_OFFSET;
   gdb_byte buf[4];
+
+  /* This function calls functions that depend on the global current thread.  */
+  gdb_assert (regcache->ptid () == inferior_ptid);
 
   gdb_assert (regnum >= -1);
 
@@ -202,6 +207,9 @@ sparc32obsd_collect_uthread(const struct regcache *regcache,
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR sp;
   gdb_byte buf[4];
+
+  /* This function calls functions that depend on the global current thread.  */
+  gdb_assert (regcache->ptid () == inferior_ptid);
 
   gdb_assert (regnum >= -1);
 

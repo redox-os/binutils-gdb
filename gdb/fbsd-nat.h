@@ -67,6 +67,9 @@ public:
   thread_control_capabilities get_thread_control_capabilities () override
   { return tc_schedlock; }
 
+  void create_inferior (const char *, const std::string &,
+			char **, int) override;
+
   void resume (ptid_t, int, enum gdb_signal) override;
 
   ptid_t wait (ptid_t, struct target_waitstatus *, target_wait_flags) override;
@@ -80,7 +83,7 @@ public:
 #endif
 
 #ifdef TDP_RFPPWAIT
-  bool follow_fork (bool, bool) override;
+  void follow_fork (bool, bool) override;
 
   int insert_fork_catchpoint (int) override;
   int remove_fork_catchpoint (int) override;
@@ -98,6 +101,8 @@ public:
 #endif
 
   bool supports_multi_process () override;
+
+  bool supports_disable_randomization () override;
 };
 
 #endif /* fbsd-nat.h */
