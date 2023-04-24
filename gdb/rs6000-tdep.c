@@ -777,7 +777,8 @@ rs6000_in_function_epilogue_frame_p (struct frame_info *curfrm,
 
   for (scan_pc = pc; scan_pc < epilogue_end; scan_pc += PPC_INSN_SIZE)
     {
-      if (!safe_frame_unwind_memory (curfrm, scan_pc, insn_buf, PPC_INSN_SIZE))
+      if (!safe_frame_unwind_memory (curfrm, scan_pc,
+				     {insn_buf, PPC_INSN_SIZE}))
 	return 0;
       insn = extract_unsigned_integer (insn_buf, PPC_INSN_SIZE, byte_order);
       if (insn == 0x4e800020)
@@ -803,7 +804,8 @@ rs6000_in_function_epilogue_frame_p (struct frame_info *curfrm,
        scan_pc >= epilogue_start;
        scan_pc -= PPC_INSN_SIZE)
     {
-      if (!safe_frame_unwind_memory (curfrm, scan_pc, insn_buf, PPC_INSN_SIZE))
+      if (!safe_frame_unwind_memory (curfrm, scan_pc,
+				     {insn_buf, PPC_INSN_SIZE}))
 	return 0;
       insn = extract_unsigned_integer (insn_buf, PPC_INSN_SIZE, byte_order);
       if (insn_changes_sp_or_jumps (insn))
@@ -839,7 +841,7 @@ typedef BP_MANIPULATION_ENDIAN (little_breakpoint, big_breakpoint)
   rs6000_breakpoint;
 
 /* Instruction masks for displaced stepping.  */
-#define BRANCH_MASK 0xfc000000
+#define OP_MASK 0xfc000000
 #define BP_MASK 0xFC0007FE
 #define B_INSN 0x48000000
 #define BC_INSN 0x40000000
@@ -860,6 +862,17 @@ typedef BP_MANIPULATION_ENDIAN (little_breakpoint, big_breakpoint)
 #define STBCX_INSTRUCTION 0x7c00056d
 #define STHCX_INSTRUCTION 0x7c0005ad
 #define STQCX_INSTRUCTION 0x7c00016d
+
+/* Instruction masks for single-stepping of addpcis/lnia.  */
+#define ADDPCIS_INSN            0x4c000004
+#define ADDPCIS_INSN_MASK       0xfc00003e
+#define ADDPCIS_TARGET_REGISTER 0x03F00000
+#define ADDPCIS_INSN_REGSHIFT   21
+
+#define PNOP_MASK 0xfff3ffff
+#define PNOP_INSN 0x07000000
+#define R_MASK 0x00100000
+#define R_ZERO 0x00000000
 
 /* Check if insn is one of the Load And Reserve instructions used for atomic
    sequences.  */
@@ -893,9 +906,35 @@ ppc_displaced_step_copy_insn (struct gdbarch *gdbarch,
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   int insn;
 
-  read_memory (from, buf, len);
+  len = target_read (current_inferior()->top_target(), TARGET_OBJECT_MEMORY, NULL,
+		     buf, from, len);
+  if ((ssize_t) len < PPC_INSN_SIZE)
+    memory_error (TARGET_XFER_E_IO, from);
 
   insn = extract_signed_integer (buf, PPC_INSN_SIZE, byte_order);
+
+  /* Check for PNOP and for prefixed instructions with R=0.  Those
+     instructions are safe to displace.  Prefixed instructions with R=1
+     will read/write data to/from locations relative to the current PC.
+     We would not be able to fixup after an instruction has written data
+    into a displaced location, so decline to displace those instructions.  */
+  if ((insn & OP_MASK) == 1 << 26)
+    {
+      if (((insn & PNOP_MASK) != PNOP_INSN)
+	  && ((insn & R_MASK) != R_ZERO))
+	{
+	  displaced_debug_printf ("Not displacing prefixed instruction %08x at %s",
+				  insn, paddress (gdbarch, from));
+	  return NULL;
+	}
+    }
+  else
+    /* Non-prefixed instructions..  */
+    {
+      /* Set the instruction length to 4 to match the actual instruction
+	 length.  */
+      len = 4;
+    }
 
   /* Assume all atomic sequences start with a Load and Reserve instruction.  */
   if (IS_LOAD_AND_RESERVE_INSN (insn))
@@ -910,7 +949,7 @@ ppc_displaced_step_copy_insn (struct gdbarch *gdbarch,
 
   displaced_debug_printf ("copy %s->%s: %s",
 			  paddress (gdbarch, from), paddress (gdbarch, to),
-			  displaced_step_dump_bytes (buf, len).c_str ());;
+			  displaced_step_dump_bytes (buf, len).c_str ());
 
   /* This is a work around for a problem with g++ 4.8.  */
   return displaced_step_copy_insn_closure_up (closure.release ());
@@ -930,17 +969,44 @@ ppc_displaced_step_fixup (struct gdbarch *gdbarch,
     = (ppc_displaced_step_copy_insn_closure *) closure_;
   ULONGEST insn  = extract_unsigned_integer (closure->buf.data (),
 					     PPC_INSN_SIZE, byte_order);
-  ULONGEST opcode = 0;
+  ULONGEST opcode;
   /* Offset for non PC-relative instructions.  */
-  LONGEST offset = PPC_INSN_SIZE;
+  LONGEST offset;
 
-  opcode = insn & BRANCH_MASK;
+  opcode = insn & OP_MASK;
+
+  /* Set offset to 8 if this is an 8-byte (prefixed) instruction.  */
+  if ((opcode) == 1 << 26)
+    offset = 2 * PPC_INSN_SIZE;
+  else
+    offset = PPC_INSN_SIZE;
 
   displaced_debug_printf ("(ppc) fixup (%s, %s)",
 			  paddress (gdbarch, from), paddress (gdbarch, to));
 
+  /* Handle the addpcis/lnia instruction.  */
+  if ((insn & ADDPCIS_INSN_MASK) == ADDPCIS_INSN)
+    {
+      LONGEST displaced_offset;
+      ULONGEST current_val;
+      /* Measure the displacement.  */
+      displaced_offset = from - to;
+      /* Identify the target register that was updated by the instruction.  */
+      int regnum = (insn & ADDPCIS_TARGET_REGISTER) >> ADDPCIS_INSN_REGSHIFT;
+      /* Read and update the target value.  */
+      regcache_cooked_read_unsigned (regs, regnum , &current_val);
+      displaced_debug_printf ("addpcis target regnum %d was %s now %s",
+			      regnum, paddress (gdbarch, current_val),
+			      paddress (gdbarch, current_val
+					+ displaced_offset));
+      regcache_cooked_write_unsigned (regs, regnum,
+					current_val + displaced_offset);
+      /* point the PC back at the non-displaced instruction.  */
+      regcache_cooked_write_unsigned (regs, gdbarch_pc_regnum (gdbarch),
+				    from + offset);
+    }
   /* Handle PC-relative branch instructions.  */
-  if (opcode == B_INSN || opcode == BC_INSN || opcode == BXL_INSN)
+  else if (opcode == B_INSN || opcode == BC_INSN || opcode == BXL_INSN)
     {
       ULONGEST current_pc;
 
@@ -999,9 +1065,12 @@ ppc_displaced_step_fixup (struct gdbarch *gdbarch,
   else if ((insn & BP_MASK) == BP_INSN)
     regcache_cooked_write_unsigned (regs, gdbarch_pc_regnum (gdbarch), from);
   else
-  /* Handle any other instructions that do not fit in the categories above.  */
-    regcache_cooked_write_unsigned (regs, gdbarch_pc_regnum (gdbarch),
-				    from + offset);
+    {
+      /* Handle any other instructions that do not fit in the categories
+         above.  */
+      regcache_cooked_write_unsigned (regs, gdbarch_pc_regnum (gdbarch),
+				      from + offset);
+    }
 }
 
 /* Implementation of gdbarch_displaced_step_prepare.  */
@@ -1087,13 +1156,16 @@ ppc_deal_with_atomic_sequence (struct regcache *regcache)
      instructions.  */
   for (insn_count = 0; insn_count < atomic_sequence_length; ++insn_count)
     {
-      loc += PPC_INSN_SIZE;
+      if ((insn & OP_MASK) == 1 << 26)
+	loc += 2 * PPC_INSN_SIZE;
+      else
+	loc += PPC_INSN_SIZE;
       insn = read_memory_integer (loc, PPC_INSN_SIZE, byte_order);
 
       /* Assume that there is at most one conditional branch in the atomic
 	 sequence.  If a conditional branch is found, put a breakpoint in 
 	 its destination address.  */
-      if ((insn & BRANCH_MASK) == BC_INSN)
+      if ((insn & OP_MASK) == BC_INSN)
 	{
 	  int immediate = ((insn & 0xfffc) ^ 0x8000) - 0x8000;
 	  int absolute = insn & 2;
@@ -1800,12 +1872,12 @@ skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc, CORE_ADDR lim_pc,
 	  continue;
 	}
       else if ((op & 0xffff0000) == 0x38210000)
- 	{			/* addi r1,r1,SIMM */
- 	  fdata->frameless = 0;
- 	  fdata->offset += SIGNED_SHORT (op);
- 	  offset = fdata->offset;
- 	  continue;
- 	}
+	{			/* addi r1,r1,SIMM */
+	  fdata->frameless = 0;
+	  fdata->offset += SIGNED_SHORT (op);
+	  offset = fdata->offset;
+	  continue;
+	}
       /* Load up minimal toc pointer.  Do not treat an epilogue restore
 	 of r31 as a minimal TOC load.  */
       else if (((op >> 22) == 0x20f	||	/* l r31,... or l r30,...  */
@@ -1818,7 +1890,7 @@ skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc, CORE_ADDR lim_pc,
 
 	  /* move parameters from argument registers to local variable
 	     registers */
- 	}
+	}
       else if ((op & 0xfc0007fe) == 0x7c000378 &&	/* mr(.)  Rx,Ry */
 	       (((op >> 21) & 31) >= 3) &&              /* R3 >= Ry >= R10 */
 	       (((op >> 21) & 31) <= 10) &&
@@ -2009,7 +2081,7 @@ skip_prologue (struct gdbarch *gdbarch, CORE_ADDR pc, CORE_ADDR lim_pc,
 	    }
 
 	  continue;
-      	}
+	}
       /* Store gen register S at (r31+r0).
 	 Store param on stack when offset from SP bigger than 4 bytes.  */
       /* 000100 sssss 11111 00000 01100100000 */
@@ -2353,6 +2425,7 @@ rs6000_builtin_type_vec128 (struct gdbarch *gdbarch)
       /* The type we're building is this
 
 	 type = union __ppc_builtin_type_vec128 {
+	     float128_t float128;
 	     uint128_t uint128;
 	     double v2_double[2];
 	     float v4_float[4];
@@ -2362,10 +2435,15 @@ rs6000_builtin_type_vec128 (struct gdbarch *gdbarch)
 	 }
       */
 
+      /* PPC specific type for IEEE 128-bit float field */
+      struct type *t_float128
+	= arch_float_type (gdbarch, 128, "float128_t", floatformats_ia64_quad);
+
       struct type *t;
 
       t = arch_composite_type (gdbarch,
 			       "__ppc_builtin_type_vec128", TYPE_CODE_UNION);
+      append_composite_type_field (t, "float128", t_float128);
       append_composite_type_field (t, "uint128", bt->builtin_uint128);
       append_composite_type_field (t, "v2_double",
 				   init_vector_type (bt->builtin_double, 2));
@@ -2607,8 +2685,10 @@ rs6000_register_to_value (struct frame_info *frame,
   gdb_assert (type->code () == TYPE_CODE_FLT);
 
   if (!get_frame_register_bytes (frame, regnum, 0,
-				 register_size (gdbarch, regnum),
-				 from, optimizedp, unavailablep))
+				 gdb::make_array_view (from,
+						       register_size (gdbarch,
+								      regnum)),
+				 optimizedp, unavailablep))
     return 0;
 
   target_float_convert (from, builtin_type (gdbarch)->builtin_double,
@@ -3562,8 +3642,7 @@ rs6000_frame_cache (struct frame_info *this_frame, void **this_cache)
 	cache->base = (CORE_ADDR) backchain;
     }
 
-  trad_frame_set_value (cache->saved_regs,
-			gdbarch_sp_regnum (gdbarch), cache->base);
+  cache->saved_regs[gdbarch_sp_regnum (gdbarch)].set_value (cache->base);
 
   /* if != -1, fdata.saved_fpr is the smallest number of saved_fpr.
      All fpr's from saved_fpr to fp31 are saved.  */
@@ -3704,6 +3783,7 @@ rs6000_frame_prev_register (struct frame_info *this_frame,
 
 static const struct frame_unwind rs6000_frame_unwind =
 {
+  "rs6000 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   rs6000_frame_this_id,
@@ -3741,8 +3821,7 @@ rs6000_epilogue_frame_cache (struct frame_info *this_frame, void **this_cache)
       cache->base = sp;
       cache->initial_sp = sp;
 
-      trad_frame_set_value (cache->saved_regs,
-			    gdbarch_pc_regnum (gdbarch), lr);
+      cache->saved_regs[gdbarch_pc_regnum (gdbarch)].set_value (lr);
     }
   catch (const gdb_exception_error &ex)
     {
@@ -3804,6 +3883,7 @@ rs6000_epilogue_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind rs6000_epilogue_frame_unwind =
 {
+  "rs6000 epilogue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   rs6000_epilogue_frame_this_id, rs6000_epilogue_frame_prev_register,
@@ -5075,7 +5155,8 @@ ppc_process_record_op31 (struct gdbarch *gdbarch, struct regcache *regcache,
       return 0;
 
     case 1014:		/* Data Cache Block set to Zero */
-      if (target_auxv_search (current_top_target (), AT_DCACHEBSIZE, &at_dcsz) <= 0
+      if (target_auxv_search (current_inferior ()->top_target (),
+			      AT_DCACHEBSIZE, &at_dcsz) <= 0
 	  || at_dcsz == 0)
 	at_dcsz = 128; /* Assume 128-byte cache line size (POWER8)  */
 
@@ -7068,7 +7149,7 @@ rs6000_gdbarch_init (struct gdbarch_info info, struct gdbarch_list *arches)
   set_gdbarch_displaced_step_restore_all_in_ptid
     (gdbarch, ppc_displaced_step_restore_all_in_ptid);
 
-  set_gdbarch_max_insn_length (gdbarch, PPC_INSN_SIZE);
+  set_gdbarch_max_insn_length (gdbarch, 2 * PPC_INSN_SIZE);
 
   /* Hook in ABI-specific overrides, if they have been registered.  */
   info.target_desc = tdesc;
@@ -7181,7 +7262,6 @@ powerpc_set_soft_float (const char *args, int from_tty,
   struct gdbarch_info info;
 
   /* Update the architecture.  */
-  gdbarch_info_init (&info);
   if (!gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__, _("could not update architecture"));
 }
@@ -7190,7 +7270,6 @@ static void
 powerpc_set_vector_abi (const char *args, int from_tty,
 			struct cmd_list_element *c)
 {
-  struct gdbarch_info info;
   int vector_abi;
 
   for (vector_abi = POWERPC_VEC_AUTO;
@@ -7208,7 +7287,7 @@ powerpc_set_vector_abi (const char *args, int from_tty,
 		    powerpc_vector_abi_string);
 
   /* Update the architecture.  */
-  gdbarch_info_init (&info);
+  gdbarch_info info;
   if (!gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__, _("could not update architecture"));
 }
@@ -7292,6 +7371,14 @@ ppc_insn_ds_field (unsigned int insn)
   return ((((CORE_ADDR) insn & 0xfffc) ^ 0x8000) - 0x8000);
 }
 
+CORE_ADDR
+ppc_insn_prefix_dform (unsigned int insn1, unsigned int insn2)
+{
+  /* result is 34-bits  */
+  return (CORE_ADDR) ((((insn1 & 0x3ffff) ^ 0x20000) - 0x20000) << 16)
+    | (CORE_ADDR)(insn2 & 0xffff);
+}
+
 /* Initialization code.  */
 
 void _initialize_rs6000_tdep ();
@@ -7326,11 +7413,11 @@ _initialize_rs6000_tdep ()
      commands.  */
   add_basic_prefix_cmd ("powerpc", no_class,
 			_("Various PowerPC-specific commands."),
-			&setpowerpccmdlist, "set powerpc ", 0, &setlist);
+			&setpowerpccmdlist, 0, &setlist);
 
   add_show_prefix_cmd ("powerpc", no_class,
 		       _("Various PowerPC-specific commands."),
-		       &showpowerpccmdlist, "show powerpc ", 0, &showlist);
+		       &showpowerpccmdlist, 0, &showlist);
 
   /* Add a command to allow the user to force the ABI.  */
   add_setshow_auto_boolean_cmd ("soft-float", class_support,

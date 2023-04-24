@@ -24,6 +24,8 @@ SIM_OBJS = $(M68HC11_OBJS) \
 	$(SIM_NEW_COMMON_OBJS) \
 	sim-resume.o
 
+SIM_EXTRA_HW_DEVICES = m68hc11 m68hc11sio m68hc11eepr m68hc11tim m68hc11spi nvram
+
 SIM_PROFILE= -DPROFILE=1 -DWITH_PROFILE=-1
 # We must use 32-bit addresses to support memory bank switching.
 # The WORD_BITSIZE is normally 16 but must be switched (temporarily)
@@ -36,9 +38,6 @@ SIM_EXTRA_CFLAGS = -DWITH_TARGET_WORD_BITSIZE=32 \
 		   -DWITH_TARGET_WORD_MSB=31
 SIM_EXTRA_CLEAN = clean-extra
 
-INCLUDE = $(srcdir)/../../include/gdb/callback.h \
-	  interrupts.h sim-main.h
-
 
 ## COMMON_POST_CONFIG_FRAG
 
@@ -48,10 +47,11 @@ m68hc11int.c: gencode
 m68hc12int.c: gencode
 	./gencode -m6812 > $@
 
-gencode:	gencode.c
-	$(CC_FOR_BUILD) $(BUILD_CFLAGS) -o gencode $(srcdir)/gencode.c
+gencode.o: gencode.c
+	$(COMPILE_FOR_BUILD) -c $< -o $@
 
-interp.o: interp.c $(INCLUDE)
+gencode: gencode.o
+	$(LINK_FOR_BUILD) $^
 
 clean-extra:
 	rm -f gencode m68hc11int.c

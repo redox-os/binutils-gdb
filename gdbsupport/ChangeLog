@@ -1,3 +1,118 @@
+2021-06-17  Pedro Alves  <pedro@palves.net>
+
+	* scoped_ignore_signal.h
+	(scoped_ignore_signal::scoped_ignore_signal)
+	[HAVE_SIGPROCMASK]: Use sigprocmask to block the signal instead of
+	changing the signal disposition for the whole process.
+	(scoped_ignore_signal::~scoped_ignore_signal) [HAVE_SIGPROCMASK]:
+	Use sigtimedwait and sigprocmask to flush and unblock the signal.
+
+2021-06-17  Pedro Alves  <pedro@palves.net>
+
+	* scoped_ignore_sigttou.h: New file, moved from gdb/ and renamed.
+
+2021-05-17  Andrew Burgess  <andrew.burgess@embecosm.com>
+
+	* .dir-locals.el: Set sentence-end-double-space for all modes, and
+	set brace-list-open to 0 for C and C++ modes.
+
+2021-05-08  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* Makefile.in: Re-generate.
+	* config.in: Re-generate.
+	* configure: Re-generate.
+
+2021-05-08  Pedro Alves  <pedro@palves.net>
+
+	* common.m4 (personality test): Remove.
+
+2021-04-30  Tom Tromey  <tromey@adacore.com>
+
+	* thread-pool.cc (thread_pool::post_task): Update.
+	* thread-pool.h (class thread_pool) <post_task>: Take rvalue
+	reference to function.
+
+2021-04-27  Michael Weghorn  <m.weghorn@posteo.de>
+	    Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* observable.h (class observable): Extend to allow specifying
+	dependencies between observers, keep vector holding observers
+	sorted so that dependencies are notified before observers
+	depending on them.
+
+2021-04-24  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* observable.h (observer_debug_printf,
+	OBSERVER_SCOPED_DEBUG_START_END): New.
+	(class observable) <notify, attach>: Use them.
+
+2021-04-24  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* common-debug.h (struct scoped_debug_start_end)
+	<scoped_debug_start_end>: Change start_msg/end_msg for
+	start_prefix/end_prefix.  Add format string parameter and make
+	variadic.
+	<~scoped_debug_start_end>: Adjust.
+	<m_end_msg>: Rename to...
+	<m_end_prefix>: ... this.
+	<m_with_format>: New.
+	<m_msg>: New.
+	(scoped_debug_start_end): Make variadic.
+	(scoped_debug_enter_exit): Adjust.
+
+2021-04-24  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* observable.h (class observable) <struct observer> <observer>:
+	Add name parameter.
+	<name>: New field.
+	<attach>: Add name parameter, update all callers.
+
+2021-04-24  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* observable.h (class observable) <struct observer>: New.
+	<detach, notify>: Update.
+	<m_observers>: Change type to vector of observers.
+
+2021-04-23  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* observable.h (observer_debug): Change to bool.
+
+2021-04-23  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* common-debug.h: Include preprocessor.h.
+
+2021-03-24  Luis Machado  <luis.machado@linaro.org>
+
+	* rsp-low.cc (fromhex, hex2bin): Move to ...
+	* common-utils.cc: ... here.
+	(fromhex) Change error message text to not be RSP-specific.
+	* rsp-low.h (fromhex, hex2bin): Move to ...
+	* common-utils.h: ... here.
+
+2021-03-21  Alan Modra  <amodra@gmail.com>
+
+	* common-utils.h (startswith): Delete version now supplied by bfd.h.
+
+2021-02-05  Paul E. Murphy  <murphy@linux.ibm.com>
+
+	* common-defs.h (ATTRIBUTE_PRINTF): Rename
+	_GL_ATTRIBUTE_FORMAT_PRINTF to _GL_ATTRIBUTE_FORMAT_PRINTF_STANDARD.
+	* common-utils.h (xfree): Use GNULIB_NAMESPACE namespace when calling
+	free if this macro is defined.
+
+2021-01-23  Lancelot SIX  <lsix@lancelotsix.com>
+
+	* gdb_tilde_expand.cc (gdb_tilde_expand): Improve
+	implementation.
+	(gdb_tilde_expand_up): Delegate logic to gdb_tilde_expand.
+	* gdb_tilde_expand.h (gdb_tilde_expand): Update description.
+
+2021-01-22  Simon Marchi  <simon.marchi@polymtl.ca>
+
+	* common-debug.h (debug_prefixed_printf_cond_nofunc): New.
+	* common-debug.c (debug_prefixed_vprintf): Handle a nullptr
+	func.
+
 2021-01-08  Simon Marchi  <simon.marchi@polymtl.ca>
 
 	PR gdb/27157

@@ -126,6 +126,7 @@ set default_regexp_dict [dict create \
   "a_point_t_pointer"		$default_pointer_regexp \
   "a_point_t_ref"		"Pretty Point \\(42, 12\\)" \
   "another_point"		"Pretty Point \\(123, 456\\)" \
+  "a_struct_with_point"		"\\{the_point = Pretty Point \\(42, 12\\)\\}" \
   "a_struct_with_union"		"\\{the_union = \\{an_int = 707406378, a_char = 42 '\\*'\\}\\}" \
   "an_enum"			"ENUM_BAR" \
   "a_string"			"${default_pointer_regexp} \"hello world\"" \
@@ -228,7 +229,7 @@ proc check_var_with_bool_opt {
 }
 
 # Test gdb.Value.format_string with no options.
-proc test_no_opts {} {
+proc_with_prefix test_no_opts {} {
   global current_lang
 
   check_var_with_no_opts "a_point_t"
@@ -253,7 +254,7 @@ proc test_no_opts {} {
 }
 
 # Test the raw option for gdb.Value.format_string.
-proc test_raw {} {
+proc_with_prefix test_raw {} {
   global current_lang
   global default_ref_regexp
 
@@ -290,7 +291,7 @@ proc test_raw {} {
 }
 
 # Test the pretty_arrays option for gdb.Value.format_string.
-proc test_pretty_arrays {} {
+proc_with_prefix test_pretty_arrays {} {
   global current_lang
 
   set an_array_pretty "\\{\[\r\n\]+  2,\[\r\n\]+  3,\[\r\n\]+  5\[\r\n\]+\\}"
@@ -331,7 +332,7 @@ proc test_pretty_arrays {} {
 }
 
 # Test the pretty_structs option for gdb.Value.format_string.
-proc test_pretty_structs {} {
+proc_with_prefix test_pretty_structs {} {
   global current_lang
 
   set a_struct_with_union_pretty \
@@ -376,7 +377,7 @@ proc test_pretty_structs {} {
 }
 
 # Test the array_indexes option for gdb.Value.format_string.
-proc test_array_indexes {} {
+proc_with_prefix test_array_indexes {} {
   global current_lang
 
   set an_array_with_indexes "\\{\\\[0\\\] = 2, \\\[1\\\] = 3, \\\[2\\\] = 5\\}"
@@ -419,7 +420,7 @@ proc test_array_indexes {} {
 }
 
 # Test the symbols option for gdb.Value.format_string.
-proc test_symbols {} {
+proc_with_prefix test_symbols {} {
   global undefined
   global current_lang
   global default_pointer_regexp
@@ -454,7 +455,7 @@ proc test_symbols {} {
 }
 
 # Test the unions option for gdb.Value.format_string.
-proc test_unions {} {
+proc_with_prefix test_unions {} {
   global undefined
   global current_lang
 
@@ -488,7 +489,7 @@ proc test_unions {} {
 }
 
 # Test the address option for gdb.Value.format_string.
-proc test_address {} {
+proc_with_prefix test_address {} {
   global undefined
   global current_lang
 
@@ -530,10 +531,11 @@ proc test_address {} {
 }
 
 # Test the deref_refs option for gdb.Value.format_string.
-proc test_deref_refs {} {
+proc_with_prefix test_deref_refs {} {
   global current_lang
   global default_pointer_regexp
   global default_ref_regexp
+  global decimal
 
   check_var_with_bool_opt "deref_refs" "a_point_t"
   check_var_with_bool_opt "deref_refs" "a_point_t_pointer"
@@ -551,12 +553,12 @@ proc test_deref_refs {} {
   if { $current_lang == "c++" } {
     check_var_with_bool_opt "deref_refs" "a_point_t_ref"
     check_var_with_bool_opt "deref_refs" "a_base_ref" \
-	"${default_ref_regexp}: \\{_vptr\[.\$\]Base = ${default_pointer_regexp} <vtable for Deriv\\+16>, a = 42, static a_static_member = 2019\\}"
+	"${default_ref_regexp}: \\{_vptr\[.\$\]Base = ${default_pointer_regexp} <vtable for Deriv\\+$decimal>, a = 42, static a_static_member = 2019\\}"
   }
 }
 
 # Test the actual_objects option for gdb.Value.format_string.
-proc test_actual_objects {} {
+proc_with_prefix test_actual_objects {} {
   global current_lang
 
   check_var_with_bool_opt "actual_objects" "a_point_t"
@@ -589,7 +591,7 @@ proc test_actual_objects {} {
 }
 
 # Test the static_members option for gdb.Value.format_string.
-proc test_static_members {} {
+proc_with_prefix test_static_members {} {
   global current_lang
 
   check_var_with_bool_opt "static_members" "a_point_t"
@@ -624,7 +626,7 @@ proc test_static_members {} {
 }
 
 # Test the max_elements option for gdb.Value.format_string.
-proc test_max_elements {} {
+proc_with_prefix test_max_elements {} {
   global current_lang
   global default_pointer_regexp
 
@@ -717,27 +719,35 @@ proc test_max_elements {} {
 }
 
 # Test the max_depth option for gdb.Value.format_string.
-proc test_max_depth {} {
+proc_with_prefix test_max_depth {} {
     set opts "max_depth=-1"
     with_test_prefix $opts {
 	check_format_string "a_struct_with_union" $opts
+	check_format_string "a_point_t" $opts "Pretty Point \\(42, 12\\)"
+	check_format_string "a_struct_with_point" $opts
     }
     set opts "max_depth=0"
     with_test_prefix $opts {
 	check_format_string "a_struct_with_union" $opts "\\{\.\.\.\\}"
+	check_format_string "a_point_t" $opts "Pretty Point \\(42, 12\\)"
+	check_format_string "a_struct_with_point" $opts "\\{\.\.\.\\}"
     }
     set opts "max_depth=1"
     with_test_prefix $opts {
 	check_format_string "a_struct_with_union" $opts "\\{the_union = \\{\.\.\.\\}\\}"
+	check_format_string "a_point_t" $opts "Pretty Point \\(42, 12\\)"
+	check_format_string "a_struct_with_point" $opts
     }
     set opts "max_depth=2"
     with_test_prefix $opts {
 	check_format_string "a_struct_with_union" $opts
+	check_format_string "a_point_t" $opts "Pretty Point \\(42, 12\\)"
+	check_format_string "a_struct_with_point" $opts
     }
 }
 
 # Test the repeat_threshold option for gdb.Value.format_string.
-proc test_repeat_threshold {} {
+proc_with_prefix test_repeat_threshold {} {
   global current_lang
   global default_pointer_regexp
 
@@ -843,7 +853,7 @@ proc test_repeat_threshold {} {
 }
 
 # Test the format option for gdb.Value.format_string.
-proc test_format {} {
+proc_with_prefix test_format {} {
   global current_lang
   global default_pointer_regexp
 
@@ -919,10 +929,11 @@ proc test_format {} {
 }
 
 # Test mixing options.
-proc test_mixed {} {
+proc_with_prefix test_mixed {} {
   global current_lang
   global default_ref_regexp
   global default_pointer_regexp
+  global decimal
 
   check_format_string "a_point_t" \
     "raw=True, format='x'" \
@@ -947,12 +958,12 @@ proc test_mixed {} {
 
     check_format_string "a_base_ref" \
       "deref_refs=True, static_members=False" \
-      "${default_ref_regexp}: \\{_vptr\[.\$\]Base = ${default_pointer_regexp} <vtable for Deriv\\+16>, a = 42\\}"
+      "${default_ref_regexp}: \\{_vptr\[.\$\]Base = ${default_pointer_regexp} <vtable for Deriv\\+$decimal>, a = 42\\}"
   }
 }
 
 # Test passing invalid arguments to gdb.Value.format_string.
-proc test_invalid_args {} {
+proc_with_prefix test_invalid_args {} {
   check_format_string \
     "a_point_t" \
     "12" \
@@ -975,7 +986,7 @@ proc test_invalid_args {} {
 }
 
 # Run all the tests in common for both C and C++.
-proc test_all_common {} {
+proc_with_prefix test_all_common {} {
   # No options.
   test_no_opts
   # Single options set to True/False.

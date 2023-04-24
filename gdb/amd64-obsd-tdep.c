@@ -78,7 +78,7 @@ amd64obsd_sigtramp_p (struct frame_info *this_frame)
 
   /* If we can't read the instructions at START_PC, return zero.  */
   buf = (gdb_byte *) alloca ((sizeof sigreturn) + 1);
-  if (!safe_frame_unwind_memory (this_frame, start_pc + 6, buf, buflen))
+  if (!safe_frame_unwind_memory (this_frame, start_pc + 6, {buf, buflen}))
     return 0;
 
   /* Check for sigreturn(2).  Depending on how the assembler encoded
@@ -402,10 +402,12 @@ amd64obsd_trapframe_sniffer (const struct frame_unwind *self,
 		   || (startswith (name, "Xintr"))));
 }
 
-static const struct frame_unwind amd64obsd_trapframe_unwind = {
+static const struct frame_unwind amd64obsd_trapframe_unwind =
+{
   /* FIXME: kettenis/20051219: This really is more like an interrupt
      frame, but SIGTRAMP_FRAME would print <signal handler called>,
      which really is not what we want here.  */
+  "amd64 openbsd trap",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   amd64obsd_trapframe_this_id,

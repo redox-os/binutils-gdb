@@ -17,14 +17,12 @@
  * AND FITNESS FOR A PARTICULAR PURPOSE.
  */
 
-#include "config.h"
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include <signal.h>
-#ifdef HAVE_TIME_H
 #include <time.h>
-#endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 #ifdef HAVE_SYS_PARAM_H
 #include <sys/param.h>
 #endif
@@ -35,12 +33,16 @@
 #include "sys/stat.h"
 #include "sys/types.h"
 #include "sim-options.h"
+#include "sim-signal.h"
+#include "sim/callback.h"
 
 #ifndef SIGTRAP
 # define SIGTRAP 5
 #endif
 
 int debug;
+
+static int memory_size;
 
 #define X(op, size)  (op * 4 + size)
 
@@ -139,13 +141,13 @@ h8_set_exception (SIM_DESC sd, int val)
 static enum h8300_sim_state
 h8_get_state (SIM_DESC sd)
 {
-  return sd -> state;
+  return H8300_SIM_STATE (sd)->state;
 }
 
 static void
 h8_set_state (SIM_DESC sd, enum h8300_sim_state val)
 {
-  sd -> state = val;
+  H8300_SIM_STATE (sd)->state = val;
 }
 #endif
 static unsigned int
@@ -230,13 +232,13 @@ h8_set_reg (SIM_DESC sd, int regnum, int val)
 static int
 h8_get_stats (SIM_DESC sd, int idx)
 {
-  return sd -> stats[idx];
+  return H8300_SIM_STATE (sd)->stats[idx];
 }
 
 static void
 h8_increment_stats (SIM_DESC sd, int idx)
 {
-  sd -> stats[idx] ++;
+  H8300_SIM_STATE (sd)->stats[idx] ++;
 }
 #endif /* ADEBUG */
 
@@ -255,37 +257,15 @@ h8_set_memory_buf (SIM_DESC sd, unsigned char *ptr)
 static unsigned char
 h8_get_memory (SIM_DESC sd, int idx)
 {
+  ASSERT (idx < memory_size);
   return (STATE_CPU (sd, 0)) -> memory[idx];
 }
 
 static void
 h8_set_memory (SIM_DESC sd, int idx, unsigned int val)
 {
+  ASSERT (idx < memory_size);
   (STATE_CPU (sd, 0)) -> memory[idx] = (unsigned char) val;
-}
-
-static unsigned char *
-h8_get_eightbit_buf (SIM_DESC sd)
-{
-  return (STATE_CPU (sd, 0)) -> eightbit;
-}
-
-static void
-h8_set_eightbit_buf (SIM_DESC sd, unsigned char *ptr)
-{
-  (STATE_CPU (sd, 0)) -> eightbit = ptr;
-}
-
-static unsigned char
-h8_get_eightbit (SIM_DESC sd, int idx)
-{
-  return (STATE_CPU (sd, 0)) -> eightbit[idx];
-}
-
-static void
-h8_set_eightbit (SIM_DESC sd, int idx, unsigned int val)
-{
-  (STATE_CPU (sd, 0)) -> eightbit[idx] = (unsigned char) val;
 }
 
 static unsigned int
@@ -331,11 +311,13 @@ h8_get_macS (SIM_DESC sd)
   return (STATE_CPU (sd, 0)) -> macS;
 }
 
+#if 0
 static void
 h8_set_macS (SIM_DESC sd, int val)
 {
   (STATE_CPU (sd, 0)) -> macS = (val != 0);
 }
+#endif
 
 /* MAC Zero Flag */
 static int
@@ -428,8 +410,6 @@ int h8300smode  = 0;
 int h8300_normal_mode  = 0;
 int h8300sxmode = 0;
 
-static int memory_size;
-
 static int
 get_now (void)
 {
@@ -491,7 +471,7 @@ lvalue (SIM_DESC sd, int x, int rn, unsigned int *val)
 }
 
 static int
-cmdline_location()
+cmdline_location(void)
 {
   if (h8300smode && !h8300_normal_mode)
     return 0xffff00L;
@@ -1122,6 +1102,35 @@ decode (SIM_DESC sd, int addr, unsigned char *data, decoded_inst *dst)
 		      /* End of Processing for system calls.  */
 		    }
 
+		  /* Use same register is specified for source
+		     and destination.
+		     The value of source will be the value after
+		     address calculation.  */
+		  if (OP_KIND (dst->opcode) != O_CMP &&
+		      OP_KIND (dst->src.type) == OP_REG &&
+		      (dst->src.reg & 7) == dst->dst.reg) {
+		    switch (OP_KIND (dst->dst.type))
+		      {
+		      case OP_POSTDEC:
+			dst->src.type = X (OP_REG_DEC,
+					   OP_SIZE (dst->dst.type));
+			break;
+		      case OP_POSTINC:
+			dst->src.type = X (OP_REG_INC,
+					   OP_SIZE (dst->dst.type));
+			break;
+		      case OP_PREINC:
+			if (OP_KIND (dst->opcode) == O_MOV)
+			  dst->src.type = X (OP_REG_INC,
+					     OP_SIZE (dst->dst.type));
+			break;
+		      case OP_PREDEC:
+			if (OP_KIND (dst->opcode) == O_MOV)
+			  dst->src.type = X (OP_REG_DEC,
+					     OP_SIZE (dst->dst.type));
+			break;
+		      }
+		  }
 		  dst->next_pc = addr + len / 2;
 		  return;
 		}
@@ -1155,41 +1164,31 @@ static unsigned short *wreg[16];
   ((X) < memory_size \
    ? ((h8_get_memory (sd, (X)+0) << 24) | (h8_get_memory (sd, (X)+1) << 16)  \
     | (h8_get_memory (sd, (X)+2) <<  8) | (h8_get_memory (sd, (X)+3) <<  0)) \
-   : ((h8_get_eightbit (sd, ((X)+0) & 0xff) << 24) \
-    | (h8_get_eightbit (sd, ((X)+1) & 0xff) << 16) \
-    | (h8_get_eightbit (sd, ((X)+2) & 0xff) <<  8) \
-    | (h8_get_eightbit (sd, ((X)+3) & 0xff) <<  0)))
+   : 0)
 
 #define GET_MEMORY_W(X) \
   ((X) < memory_size \
-   ? ((h8_get_memory   (sd, (X)+0) << 8) \
-    | (h8_get_memory   (sd, (X)+1) << 0)) \
-   : ((h8_get_eightbit (sd, ((X)+0) & 0xff) << 8) \
-    | (h8_get_eightbit (sd, ((X)+1) & 0xff) << 0)))
-
+   ? ((h8_get_memory (sd, (X)+0) << 8) | (h8_get_memory (sd, (X)+1) << 0)) \
+   : 0)
 
 #define GET_MEMORY_B(X) \
-  ((X) < memory_size ? (h8_get_memory   (sd, (X))) \
-                     : (h8_get_eightbit (sd, (X) & 0xff)))
+  ((X) < memory_size ? h8_get_memory (sd, (X)) : 0)
 
 #define SET_MEMORY_L(X, Y)  \
 {  register unsigned char *_p; register int __y = (Y); \
-   _p = ((X) < memory_size ? h8_get_memory_buf   (sd) +  (X) : \
-                             h8_get_eightbit_buf (sd) + ((X) & 0xff)); \
+   _p = ((X) < memory_size ? h8_get_memory_buf (sd) + (X) : 0); \
    _p[0] = __y >> 24; _p[1] = __y >> 16; \
    _p[2] = __y >>  8; _p[3] = __y >>  0; \
 }
 
 #define SET_MEMORY_W(X, Y) \
 {  register unsigned char *_p; register int __y = (Y); \
-   _p = ((X) < memory_size ? h8_get_memory_buf   (sd) +  (X) : \
-                             h8_get_eightbit_buf (sd) + ((X) & 0xff)); \
+   _p = ((X) < memory_size ? h8_get_memory_buf (sd) + (X) : 0); \
    _p[0] = __y >> 8; _p[1] = __y; \
 }
 
 #define SET_MEMORY_B(X, Y) \
-  ((X) < memory_size ? (h8_set_memory   (sd, (X), (Y))) \
-                     : (h8_set_eightbit (sd, (X) & 0xff, (Y))))
+  ((X) < memory_size ? h8_set_memory (sd, (X), (Y)) : 0)
 
 /* Simulate a memory fetch.
    Return 0 for success, -1 for failure.
@@ -1400,6 +1399,25 @@ fetch_1 (SIM_DESC sd, ea_type *arg, int *val, int twice)
     case X (OP_PCREL, SL):
     case X (OP_PCREL, SN):
       *val = abs;
+      break;
+
+    case X (OP_REG_DEC, SB):	/* Register direct, affected decrement byte.  */
+      *val = GET_B_REG (rn) - 1;
+      break;
+    case X (OP_REG_DEC, SW):	/* Register direct, affected decrement word.  */
+      *val = GET_W_REG (rn) - 2;
+      break;
+    case X (OP_REG_DEC, SL):	/* Register direct, affected decrement long.  */
+      *val = GET_L_REG (rn) - 4;
+      break;
+    case X (OP_REG_INC, SB):	/* Register direct, affected increment byte.  */
+      *val = GET_B_REG (rn) + 1;
+      break;
+    case X (OP_REG_INC, SW):	/* Register direct, affected increment word.  */
+      *val = GET_W_REG (rn) + 2;
+      break;
+    case X (OP_REG_INC, SL):	/* Register direct, affected increment long.  */
+      *val = GET_L_REG (rn) + 4;
       break;
 
     case X (OP_MEM, SB):	/* Why isn't this implemented?  */
@@ -1644,6 +1662,8 @@ static int init_pointers_needed = 1;
 static void
 init_pointers (SIM_DESC sd)
 {
+  struct h8300_sim_state *state = H8300_SIM_STATE (sd);
+
   if (init_pointers_needed)
     {
       int i;
@@ -1660,18 +1680,16 @@ init_pointers (SIM_DESC sd)
 	  sim_io_printf
 	    (sd,
 	     "init_pointers: bad memory size %d, defaulting to %d.\n", 
-	     memory_size, memory_size = H8300S_MSIZE);
+	     memory_size, H8300S_MSIZE);
+	  memory_size = H8300S_MSIZE;
 	}
 
       if (h8_get_memory_buf (sd))
 	free (h8_get_memory_buf (sd));
-      if (h8_get_eightbit_buf (sd))
-	free (h8_get_eightbit_buf (sd));
 
       h8_set_memory_buf (sd, (unsigned char *) 
 			 calloc (sizeof (char), memory_size));
-      sd->memory_size = memory_size;
-      h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
+      state->memory_size = memory_size;
 
       h8_set_mask (sd, memory_size - 1);
 
@@ -1754,8 +1772,10 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
   int bit;
   int pc;
   int c, nz, v, n, u, h, ui, intMaskBit;
-  int trace, intMask;
+  int trace = 0;
+  int intMask = 0;
   int oldmask;
+  const struct h8300_sim_state *state = H8300_SIM_STATE (sd);
   host_callback *sim_callback = STATE_CALLBACK (sd);
 
   init_pointers (sd);
@@ -2011,7 +2031,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 
 	case O (O_AND, SB):		/* and.b */
 	  /* Fetch rd and ea.  */
-	  if (fetch (sd, &code->src, &ea) || fetch2 (sd, &code->dst, &rd)) 
+	  if (fetch2 (sd, &code->dst, &rd) || fetch (sd, &code->src, &ea))
 	    goto end;
 	  res = rd & ea;
 	  goto log8;
@@ -2032,7 +2052,7 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 
 	case O (O_OR, SB):		/* or.b */
 	  /* Fetch rd and ea.  */
-	  if (fetch (sd, &code->src, &ea) || fetch2 (sd, &code->dst, &rd)) 
+	  if (fetch2 (sd, &code->dst, &rd) || fetch (sd, &code->src, &ea))
 	    goto end;
 	  res = rd | ea;
 	  goto log8;
@@ -2168,25 +2188,12 @@ step_once (SIM_DESC sd, SIM_CPU *cpu)
 				    ? h8_get_reg (sd, R4_REGNUM) & 0xffff
 				    : h8_get_reg (sd, R4_REGNUM) & 0xff);
 
-	      _src = (h8_get_reg (sd, R5_REGNUM) < memory_size
-		      ? h8_get_memory_buf   (sd) + h8_get_reg (sd, R5_REGNUM)
-		      : h8_get_eightbit_buf (sd) + 
-		       (h8_get_reg (sd, R5_REGNUM) & 0xff));
+	      _src = h8_get_memory_buf (sd) + h8_get_reg (sd, R5_REGNUM);
 	      if ((_src + count) >= (h8_get_memory_buf (sd) + memory_size))
-		{
-		  if ((_src + count) >= (h8_get_eightbit_buf (sd) + 0x100))
-		    goto illegal;
-		}
-	      _dst = (h8_get_reg (sd, R6_REGNUM) < memory_size
-		      ? h8_get_memory_buf   (sd) + h8_get_reg (sd, R6_REGNUM)
-		      : h8_get_eightbit_buf (sd) + 
-		       (h8_get_reg (sd, R6_REGNUM) & 0xff));
-
+		goto illegal;
+	      _dst = h8_get_memory_buf (sd) + h8_get_reg (sd, R6_REGNUM);
 	      if ((_dst + count) >= (h8_get_memory_buf (sd) + memory_size))
-		{
-		  if ((_dst + count) >= (h8_get_eightbit_buf (sd) + 0x100))
-		    goto illegal;
-		}
+		goto illegal;
 	      memcpy (_dst, _src, count);
 
 	      h8_set_reg (sd, R5_REGNUM, h8_get_reg (sd, R5_REGNUM) + count);
@@ -4448,11 +4455,9 @@ sim_write (SIM_DESC sd, SIM_ADDR addr, const unsigned char *buffer, int size)
 	  h8_set_memory    (sd, addr + i, buffer[i]);
 	}
       else
-	{
-	  h8_set_eightbit (sd, (addr + i) & 0xff, buffer[i]);
-	}
+	break;
     }
-  return size;
+  return i;
 }
 
 int
@@ -4461,10 +4466,10 @@ sim_read (SIM_DESC sd, SIM_ADDR addr, unsigned char *buffer, int size)
   init_pointers (sd);
   if (addr < 0)
     return 0;
-  if (addr < memory_size)
+  if (addr + size < memory_size)
     memcpy (buffer, h8_get_memory_buf (sd) + addr, size);
   else
-    memcpy (buffer, h8_get_eightbit_buf (sd) + (addr & 0xff), size);
+    return 0;
   return size;
 }
 
@@ -4577,6 +4582,7 @@ h8300_reg_fetch (SIM_CPU *cpu, int rn, unsigned char *buf, int length)
 void
 sim_info (SIM_DESC sd, int verbose)
 {
+  const struct h8300_sim_state *state = H8300_SIM_STATE (sd);
   double timetaken = (double) h8_get_ticks (sd) / (double) now_persec ();
   double virttime = h8_get_cycles (sd) / 10.0e6;
 
@@ -4605,7 +4611,7 @@ sim_info (SIM_DESC sd, int verbose)
 /* Indicate whether the cpu is an H8/300 or H8/300H.
    FLAG is non-zero for the H8/300H.  */
 
-void
+static void
 set_h8300h (unsigned long machine)
 {
   /* FIXME: Much of the code in sim_load can be moved to sim_open.
@@ -4709,10 +4715,13 @@ sim_open (SIM_OPEN_KIND kind,
   SIM_DESC sd;
   sim_cpu *cpu;
 
-  sd = sim_state_alloc (kind, callback);
+  sd = sim_state_alloc_extra (kind, callback, sizeof (struct h8300_sim_state));
+
+  /* Set default options before parsing user options.  */
+  current_target_byte_order = BFD_ENDIAN_BIG;
 
   /* The cpu data is kept in a separately allocated chunk of memory.  */
-  if (sim_cpu_alloc_all (sd, 1, /*cgen_cpu_max_extra_bytes ()*/0) != SIM_RC_OK)
+  if (sim_cpu_alloc_all (sd, 1) != SIM_RC_OK)
     {
       free_state (sd);
       return 0;
@@ -4793,6 +4802,7 @@ sim_open (SIM_OPEN_KIND kind,
 SIM_RC
 sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
 {
+  struct h8300_sim_state *state = H8300_SIM_STATE (sd);
   bfd *prog_bfd;
 
   /* FIXME: The code below that sets a specific variant of the H8/300
@@ -4839,13 +4849,10 @@ sim_load (SIM_DESC sd, const char *prog, bfd *abfd, int from_tty)
 
   if (h8_get_memory_buf (sd))
     free (h8_get_memory_buf (sd));
-  if (h8_get_eightbit_buf (sd))
-    free (h8_get_eightbit_buf (sd));
 
   h8_set_memory_buf (sd, (unsigned char *) 
 		     calloc (sizeof (char), memory_size));
-  sd->memory_size = memory_size;
-  h8_set_eightbit_buf (sd, (unsigned char *) calloc (sizeof (char), 256));
+  state->memory_size = memory_size;
 
   /* `msize' must be a power of two.  */
   if ((memory_size & (memory_size - 1)) != 0)

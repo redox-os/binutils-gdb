@@ -161,7 +161,7 @@ static const char *repeat_arguments;
    command.  We need this as when a command is running, saved_command_line
    already contains the line of the currently executing command.  */
 
-char *previous_saved_command_line;
+static char *previous_saved_command_line;
 
 /* If not NULL, the arguments that should be passed if the
    previous_saved_command_line is repeated.  */
@@ -197,10 +197,6 @@ bool server_command;
    back to 2 seconds in 1999.  */
 
 int remote_timeout = 2;
-
-/* Non-zero tells remote* modules to output debugging info.  */
-
-int remote_debug = 0;
 
 /* Sbrk location on entry to main.  Used for statistics only.  */
 #ifdef HAVE_USEFUL_SBRK
@@ -447,8 +443,6 @@ read_command_file (FILE *stream)
       command_handler (command);
     }
 }
-
-void (*pre_init_ui_hook) (void);
 
 #ifdef __MSDOS__
 static void
@@ -488,7 +482,8 @@ check_frame_language_change (void)
     {
       if (language_mode == language_mode_auto && info_verbose)
 	{
-	  language_info (1);	/* Print what changed.  */
+	  /* Print what changed.  */
+	  language_info ();
 	}
       warned = 0;
     }
@@ -522,6 +517,13 @@ wait_sync_command_done (void)
   /* Processing events may change the current UI.  */
   scoped_restore save_ui = make_scoped_restore (&current_ui);
   struct ui *ui = current_ui;
+
+  /* We're about to wait until the target stops after having resumed
+     it so must force-commit resumptions, in case we're being called
+     in some context where a scoped_disable_commit_resumed object is
+     active.  I.e., this function is a commit-resumed sync/flush
+     point.  */
+  scoped_enable_commit_resumed enable ("sync wait");
 
   while (gdb_do_one_event () >= 0)
     if (ui->prompt_state != PROMPT_BLOCKED)
@@ -645,22 +647,26 @@ execute_command (const char *p, int from_tty)
       if (c->theclass == class_user && c->user_commands)
 	execute_user_command (c, arg);
       else if (c->theclass == class_user
-	       && c->prefixlist && !c->allow_unknown)
+	       && c->is_prefix () && !c->allow_unknown)
 	/* If this is a user defined prefix that does not allow unknown
 	   (in other words, C is a prefix command and not a command
 	   that can be followed by its args), report the list of
 	   subcommands.  */
 	{
+	  std::string prefixname = c->prefixname ();
+          std::string prefixname_no_space
+	    = prefixname.substr (0, prefixname.length () - 1);
 	  printf_unfiltered
-	    ("\"%.*s\" must be followed by the name of a subcommand.\n",
-	     (int) strlen (c->prefixname) - 1, c->prefixname);
-	  help_list (*c->prefixlist, c->prefixname, all_commands, gdb_stdout);
+	    ("\"%s\" must be followed by the name of a subcommand.\n",
+	     prefixname_no_space.c_str ());
+	  help_list (*c->subcommands, prefixname.c_str (), all_commands,
+		     gdb_stdout);
 	}
       else if (c->type == set_cmd)
 	do_set_command (arg, from_tty, c);
       else if (c->type == show_cmd)
 	do_show_command (arg, from_tty, c);
-      else if (!cmd_func_p (c))
+      else if (c->is_command_class_help ())
 	error (_("That is not a command, just a help topic."));
       else if (deprecated_call_command_hook)
 	deprecated_call_command_hook (c, arg, from_tty);
@@ -722,9 +728,7 @@ execute_command_to_ui_file (struct ui_file *file, const char *p, int from_tty)
   }
 }
 
-/* Run execute_command for P and FROM_TTY.  Capture its output into the
-   returned string, do not display it to the screen.  BATCH_FLAG will be
-   temporarily set to true.  */
+/* See gdbcmd.h.  */
 
 std::string
 execute_command_to_string (const char *p, int from_tty,
@@ -1397,14 +1401,9 @@ print_gdb_version (struct ui_file *stream, bool interactive)
      program to parse, and is just canonical program name and version
      number, which starts after last space.  */
 
-  ui_file_style style;
-  if (interactive)
-    {
-      ui_file_style nstyle = { ui_file_style::MAGENTA, ui_file_style::NONE,
-			       ui_file_style::BOLD };
-      style = nstyle;
-    }
-  fprintf_styled (stream, style, "GNU gdb %s%s\n", PKGVERSION, version);
+  std::string v_str = string_printf ("GNU gdb %s%s", PKGVERSION, version);
+  fprintf_filtered (stream, "%ps\n",
+		    styled_string (version_style.style (), v_str.c_str ()));
 
   /* Second line is a copyright notice.  */
 
@@ -2116,7 +2115,10 @@ show_exec_done_display_p (struct ui_file *file, int from_tty,
 		    value);
 }
 
-/* New values of the "data-directory" parameter are staged here.  */
+/* New values of the "data-directory" parameter are staged here.
+   Extension languages, for example Python's gdb.parameter API, will read
+   the value directory from this variable, so we must ensure that this
+   always contains the correct value.  */
 static char *staged_gdb_datadir;
 
 /* "set" command for the gdb_datadir configuration variable.  */
@@ -2125,6 +2127,14 @@ static void
 set_gdb_datadir (const char *args, int from_tty, struct cmd_list_element *c)
 {
   set_gdb_data_directory (staged_gdb_datadir);
+
+  /* SET_GDB_DATA_DIRECTORY will resolve relative paths in
+     STAGED_GDB_DATADIR, so we now copy the value from GDB_DATADIR
+     back into STAGED_GDB_DATADIR so the extension languages can read the
+     correct value.  */
+  free (staged_gdb_datadir);
+  staged_gdb_datadir = strdup (gdb_datadir.c_str ());
+
   gdb::observers::gdb_datadir_changed.notify ();
 }
 
@@ -2155,6 +2165,28 @@ set_history_filename (const char *args,
       xfree (history_filename);
       history_filename = temp.release ();
     }
+}
+
+/* Whether we're in quiet startup mode.  */
+
+static bool startup_quiet;
+
+/* See top.h.  */
+
+bool
+check_quiet_mode ()
+{
+  return startup_quiet;
+}
+
+/* Show whether GDB should start up in quiet mode.  */
+
+static void
+show_startup_quiet (struct ui_file *file, int from_tty,
+	      struct cmd_list_element *c, const char *value)
+{
+  fprintf_filtered (file, _("Whether to start up quietly is %s.\n"),
+		    value);
 }
 
 static void
@@ -2295,7 +2327,9 @@ Use \"on\" to enable the notification, and \"off\" to disable it."),
 When set, GDB uses the specified path to search for data files."),
 			   set_gdb_datadir, show_gdb_datadir,
 			   &setlist,
-			   &showlist);
+			    &showlist);
+  /* Prime the initial value for data-directory.  */
+  staged_gdb_datadir = strdup (gdb_datadir.c_str ());
 
   add_setshow_auto_boolean_cmd ("interactive-mode", class_support,
 				&interactive_mode, _("\
@@ -2311,6 +2345,17 @@ input settings."),
 			show_interactive_mode,
 			&setlist, &showlist);
 
+  add_setshow_boolean_cmd ("startup-quietly", class_support,
+			       &startup_quiet, _("\
+Set whether GDB should start up quietly."), _("		\
+Show whether GDB should start up quietly."), _("\
+This setting will not affect the current session.  Instead this command\n\
+should be added to the .gdbearlyinit file in the users home directory to\n\
+affect future GDB sessions."),
+			       NULL,
+			       show_startup_quiet,
+			       &setlist, &showlist);
+
   c = add_cmd ("new-ui", class_support, new_ui_command, _("\
 Create a new UI.\n\
 Usage: new-ui INTERPRETER TTY\n\
@@ -2319,14 +2364,13 @@ The second argument is the terminal the UI runs on."), &cmdlist);
   set_cmd_completer (c, interpreter_completer);
 }
 
+/* See top.h.  */
+
 void
-gdb_init (char *argv0)
+gdb_init ()
 {
   saved_command_line = xstrdup ("");
   previous_saved_command_line = xstrdup ("");
-
-  if (pre_init_ui_hook)
-    pre_init_ui_hook ();
 
   /* Run the init function of each source file.  */
 
@@ -2367,12 +2411,6 @@ gdb_init (char *argv0)
      during startup.  */
   set_language (language_c);
   expected_language = current_language;	/* Don't warn about the change.  */
-
-  /* Python initialization, for example, can require various commands to be
-     installed.  For example "info pretty-printer" needs the "info"
-     prefix to be installed.  Keep things simple and just do final
-     script initialization here.  */
-  finish_ext_lang_initialization ();
 
   /* Create $_gdb_major and $_gdb_minor convenience variables.  */
   init_gdb_version_vars ();

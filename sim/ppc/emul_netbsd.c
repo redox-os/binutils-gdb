@@ -28,14 +28,7 @@
 #include "emul_generic.h"
 #include "emul_netbsd.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <stdio.h>
@@ -82,9 +75,7 @@ int getrusage();
 #include <unistd.h>
 #endif
 
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 
 #define WITH_NetBSD_HOST (NetBSD >= 199306)
 #if WITH_NetBSD_HOST /* here NetBSD as that is what we're emulating */
@@ -105,10 +96,6 @@ extern int getdirentries(int fd, char *buf, int nbytes, long *basep);
 /* If this is not netbsd, don't allow fstatfs or getdirentries at this time */
 #undef HAVE_FSTATFS
 #undef HAVE_GETDIRENTRIES
-#endif
-
-#if (BSD < 199306) /* here BSD as just a bug */
-extern int errno;
 #endif
 
 #ifndef STATIC_INLINE_EMUL_NETBSD
@@ -776,8 +763,7 @@ do_gettimeofday(os_emul_data *emul,
   unsigned_word tz_addr = cpu_registers(processor)->gpr[arg0+1];
   struct timeval t;
   struct timezone tz;
-  int status = gettimeofday((t_addr != 0 ? &t : NULL),
-			    (tz_addr != 0 ? &tz : NULL));
+  int status = gettimeofday(&t, (tz_addr != 0 ? &tz : NULL));
   int err = errno;
 
   if (WITH_TRACE && ppc_trace[trace_os_emul])

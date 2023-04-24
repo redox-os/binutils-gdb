@@ -69,7 +69,7 @@ m68k_linux_pc_in_sigtramp (struct frame_info *this_frame)
   unsigned long insn0, insn1, insn2;
   CORE_ADDR pc = get_frame_pc (this_frame);
 
-  if (!safe_frame_unwind_memory (this_frame, pc - 4, buf, sizeof (buf)))
+  if (!safe_frame_unwind_memory (this_frame, pc - 4, {buf, sizeof (buf)}))
     return 0;
   insn1 = extract_unsigned_integer (buf + 4, 4, byte_order);
   insn2 = extract_unsigned_integer (buf + 8, 4, byte_order);
@@ -316,6 +316,7 @@ m68k_linux_sigtramp_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind m68k_linux_sigtramp_frame_unwind =
 {
+  "m68k linux sigtramp",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   m68k_linux_sigtramp_frame_this_id,
@@ -429,5 +430,6 @@ _initialize_m68k_linux_tdep ()
 {
   gdbarch_register_osabi (bfd_arch_m68k, 0, GDB_OSABI_LINUX,
 			  m68k_linux_init_abi);
-  gdb::observers::inferior_created.attach (m68k_linux_inferior_created);
+  gdb::observers::inferior_created.attach (m68k_linux_inferior_created,
+					   "m68k-linux-tdep");
 }

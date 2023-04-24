@@ -1,4 +1,6 @@
-#include "config.h"
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include <signal.h>
 
 #include "sim-main.h"
@@ -7,19 +9,10 @@
 
 #include "bfd.h"
 #include "sim-assert.h"
+#include "sim-signal.h"
 
-
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
 
 #include "bfd.h"
 
@@ -102,8 +95,11 @@ sim_open (SIM_OPEN_KIND kind,
 
   SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
 
+  /* Set default options before parsing user options.  */
+  current_target_byte_order = BFD_ENDIAN_LITTLE;
+
   /* The cpu data is kept in a separately allocated chunk of memory.  */
-  if (sim_cpu_alloc_all (sd, 1, /*cgen_cpu_max_extra_bytes ()*/0) != SIM_RC_OK)
+  if (sim_cpu_alloc_all (sd, 1) != SIM_RC_OK)
     return 0;
 
   /* for compatibility */
@@ -112,8 +108,6 @@ sim_open (SIM_OPEN_KIND kind,
   /* FIXME: should be better way of setting up interrupts.  For
      moment, only support watchpoints causing a breakpoint (gdb
      halt). */
-  STATE_WATCHPOINTS (sd)->pc = &(PC);
-  STATE_WATCHPOINTS (sd)->sizeof_pc = sizeof (PC);
   STATE_WATCHPOINTS (sd)->interrupt_handler = NULL;
   STATE_WATCHPOINTS (sd)->interrupt_names = NULL;
 
@@ -474,6 +468,9 @@ mn10300_cpu_exception_resume(SIM_DESC sd, sim_cpu* cpu, int exception)
 
   if(exception == 0 && State.exc_suspended > 0)
     {
+#ifndef SIGTRAP
+# define SIGTRAP 5
+#endif
       if(State.exc_suspended != SIGTRAP) /* warn not for breakpoints */
          sim_io_eprintf(sd, "Warning, resuming but ignoring pending exception signal (%d)\n",
   		       State.exc_suspended); 

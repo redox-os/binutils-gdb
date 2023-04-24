@@ -231,7 +231,7 @@ bsd_uthread_activate (struct objfile *objfile)
   bsd_uthread_thread_ctx_offset =
     bsd_uthread_lookup_offset ("_thread_ctx_offset", objfile);
 
-  push_target (&bsd_uthread_ops);
+  current_inferior ()->push_target (&bsd_uthread_ops);
   bsd_uthread_active = 1;
   return 1;
 }
@@ -259,7 +259,7 @@ bsd_uthread_deactivate (void)
   if (!bsd_uthread_active)
     return;
 
-  unpush_target (&bsd_uthread_ops);
+  current_inferior ()->unpush_target (&bsd_uthread_ops);
 }
 
 static void
@@ -550,7 +550,10 @@ _initialize_bsd_uthread ()
 {
   bsd_uthread_data = gdbarch_data_register_pre_init (bsd_uthread_init);
 
-  gdb::observers::inferior_created.attach (bsd_uthread_inferior_created);
-  gdb::observers::solib_loaded.attach (bsd_uthread_solib_loaded);
-  gdb::observers::solib_unloaded.attach (bsd_uthread_solib_unloaded);
+  gdb::observers::inferior_created.attach (bsd_uthread_inferior_created,
+					   "bsd-uthread");
+  gdb::observers::solib_loaded.attach (bsd_uthread_solib_loaded,
+				       "bsd-uthread");
+  gdb::observers::solib_unloaded.attach (bsd_uthread_solib_unloaded,
+					 "bsd-uthread");
 }

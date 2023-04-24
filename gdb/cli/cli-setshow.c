@@ -550,10 +550,10 @@ do_set_command (const char *arg, int from_tty, struct cmd_list_element *c)
 	  p = p->prefix;
 	}
 
-      /* Don't trigger any observer notification if prefixlist is not
+      /* Don't trigger any observer notification if subcommands is not
 	 setlist.  */
       i--;
-      if (cmds[i]->prefixlist != &setlist)
+      if (cmds[i]->subcommands != &setlist)
 	{
 	  xfree (cmds);
 	  xfree (name);
@@ -708,17 +708,13 @@ do_show_command (const char *arg, int from_tty, struct cmd_list_element *c)
 
   gdb_assert (c->type == show_cmd);
 
-  /* Possibly call the pre hook.  */
-  if (c->pre_show_hook)
-    (c->pre_show_hook) (c);
-
   std::string val = get_setshow_command_value_string (c);
 
   /* FIXME: cagney/2005-02-10: There should be MI and CLI specific
      versions of code to print the value out.  */
 
   if (uiout->is_mi_like_p ())
-    uiout->field_string ("value", val.c_str ());
+    uiout->field_string ("value", val);
   else
     {
       if (c->show_value_func != NULL)
@@ -744,26 +740,28 @@ cmd_show_list (struct cmd_list_element *list, int from_tty)
 
       /* If we find a prefix, run its list, prefixing our output by its
 	 prefix (with "show " skipped).  */
-      if (list->prefixlist && list->cmd_pointer == nullptr)
+      if (list->is_prefix () && !list->is_alias ())
 	{
 	  ui_out_emit_tuple optionlist_emitter (uiout, "optionlist");
-	  const char *new_prefix = strstr (list->prefixname, "show ") + 5;
+	  std::string prefixname = list->prefixname ();
+	  const char *new_prefix = strstr (prefixname.c_str (), "show ") + 5;
 
 	  if (uiout->is_mi_like_p ())
 	    uiout->field_string ("prefix", new_prefix);
-	  cmd_show_list (*list->prefixlist, from_tty);
+	  cmd_show_list (*list->subcommands, from_tty);
 	}
-      else if (list->theclass != no_set_class && list->cmd_pointer == nullptr)
+      else if (list->theclass != no_set_class && !list->is_alias ())
 	{
 	  ui_out_emit_tuple option_emitter (uiout, "option");
 
-	  {
-	    /* If we find a prefix, output it (with "show " skipped).  */
-	    const char *prefixname
-	      = (list->prefix == nullptr ? ""
-		 : strstr (list->prefix->prefixname, "show ") + 5);
-	    uiout->text (prefixname);
-	  }
+	  if (list->prefix != nullptr)
+	    {
+	      /* If we find a prefix, output it (with "show " skipped).  */
+	      std::string prefixname = list->prefix->prefixname ();
+	      prefixname = (!list->prefix->is_prefix () ? ""
+			    : strstr (prefixname.c_str (), "show ") + 5);
+	      uiout->text (prefixname);
+	    }
 	  uiout->field_string ("name", list->name);
 	  uiout->text (":  ");
 	  if (list->type == show_cmd)

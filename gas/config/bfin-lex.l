@@ -20,10 +20,8 @@
    Software Foundation, 51 Franklin Street - Fifth Floor, Boston, MA
    02110-1301, USA.  */
 %{
-
-#include "as.h"
 #include "bfin-defs.h"
-#include "bfin-parse.h"
+#include "config/bfin-parse.h"
 
 static long parse_int (char **end);
 static int parse_halfreg (Register *r, int cl, char *hr);
@@ -32,6 +30,9 @@ int yylex (void);
 
 #define _REG yylval.reg
 
+/* Flex generates static functions "input" & "unput" which are not used.  */
+#define YY_NO_INPUT
+#define YY_NO_UNPUT
 
 %}
 
@@ -343,7 +344,7 @@ static long parse_int (char **end)
   char fmt = '\0';
   int not_done = 1;
   int shiftvalue = 0;
-  char * char_bag;
+  const char *char_bag;
   unsigned long value = 0;
   char *arg = *end;
 

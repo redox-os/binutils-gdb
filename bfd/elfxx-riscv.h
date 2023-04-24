@@ -24,6 +24,8 @@
 #include "elf/internal.h"
 #include "opcode/riscv.h"
 
+#define RISCV_UNKNOWN_VERSION -1
+
 extern reloc_howto_type *
 riscv_reloc_name_lookup (bfd *, const char *);
 
@@ -58,7 +60,7 @@ riscv_add_subset (riscv_subset_list_t *,
 		  const char *,
 		  int, int);
 
-extern bfd_boolean
+extern bool
 riscv_lookup_subset (const riscv_subset_list_t *,
 		     const char *,
 		     riscv_subset_t **);
@@ -72,9 +74,10 @@ typedef struct
   void (*get_default_version) (const char *,
 			       int *,
 			       int *);
+  bool check_unknown_prefixed_ext;
 } riscv_parse_subset_t;
 
-extern bfd_boolean
+extern bool
 riscv_parse_subset (riscv_parse_subset_t *,
 		    const char *);
 
@@ -90,32 +93,15 @@ riscv_arch_str (unsigned, const riscv_subset_list_t *);
 extern size_t
 riscv_estimate_digit (unsigned);
 
-/* ISA extension name class. E.g. "zbb" corresponds to RV_ISA_CLASS_Z,
-   "xargs" corresponds to RV_ISA_CLASS_X, etc.  */
-
-typedef enum riscv_isa_ext_class
-{
-  RV_ISA_CLASS_S,
-  RV_ISA_CLASS_H,
-  RV_ISA_CLASS_Z,
-  RV_ISA_CLASS_X,
-  RV_ISA_CLASS_UNKNOWN
-} riscv_isa_ext_class_t;
-
-riscv_isa_ext_class_t
-riscv_get_prefix_class (const char *);
-
-extern int
-riscv_get_priv_spec_class (const char *, enum riscv_priv_spec_class *);
-
-extern int
-riscv_get_priv_spec_class_from_numbers (unsigned int,
-					unsigned int,
-					unsigned int,
-					enum riscv_priv_spec_class *);
-
-extern const char *
-riscv_get_priv_spec_name (enum riscv_priv_spec_class);
-
 extern int
 riscv_compare_subsets (const char *, const char *);
+
+extern bool
+bfd_elf32_riscv_restart_relax_sections (struct bfd_link_info *);
+extern bool
+bfd_elf64_riscv_restart_relax_sections (struct bfd_link_info *);
+
+extern void
+bfd_elf32_riscv_set_data_segment_info (struct bfd_link_info *, int *);
+extern void
+bfd_elf64_riscv_set_data_segment_info (struct bfd_link_info *, int *);

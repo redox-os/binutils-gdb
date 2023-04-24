@@ -43,6 +43,9 @@
    language is requested. */
 #undef ENABLE_NLS
 
+/* The .gdbearlyinit filename. */
+#undef GDBEARLYINIT
+
 /* The .gdbinit filename. */
 #undef GDBINIT
 
@@ -92,10 +95,6 @@
 
 /* define if the compiler supports basic C++11 syntax */
 #undef HAVE_CXX11
-
-/* Define to 1 if you have the declaration of `ADDR_NO_RANDOMIZE', and to 0 if
-   you don't. */
-#undef HAVE_DECL_ADDR_NO_RANDOMIZE
 
 /* Define to 1 if you have the declaration of `asprintf', and to 0 if you
    don't. */
@@ -298,9 +297,6 @@
 /* Define to 1 if you have the <nlist.h> header file. */
 #undef HAVE_NLIST_H
 
-/* Define if you support the personality syscall. */
-#undef HAVE_PERSONALITY
-
 /* Define to 1 if you have the `pipe' function. */
 #undef HAVE_PIPE
 
@@ -489,6 +485,9 @@
 
 /* Define to 1 if you have the <sys/poll.h> header file. */
 #undef HAVE_SYS_POLL_H
+
+/* Define to 1 if you have the <sys/procctl.h> header file. */
+#undef HAVE_SYS_PROCCTL_H
 
 /* Define to 1 if you have the <sys/procfs.h> header file. */
 #undef HAVE_SYS_PROCFS_H
@@ -721,9 +720,6 @@
 
 /* Define if <thread_db.h> has the TD_VERSION error code. */
 #undef THREAD_DB_HAS_TD_VERSION
-
-/* Define to 1 if the regex included in libiberty should be used. */
-#undef USE_INCLUDED_REGEX
 
 /* Enable extensions on AIX 3, Interix.  */
 #ifndef _ALL_SOURCE

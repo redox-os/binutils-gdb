@@ -284,7 +284,7 @@ serial_fdopen_ops (const int fd, const struct serial_ops *ops)
     {
       ops = serial_interface_lookup ("terminal");
       if (!ops)
- 	ops = serial_interface_lookup ("hardwire");
+	ops = serial_interface_lookup ("hardwire");
     }
 
   if (!ops)
@@ -623,10 +623,7 @@ serial_pipe (struct serial *scbs[2])
 static struct cmd_list_element *serial_set_cmdlist;
 static struct cmd_list_element *serial_show_cmdlist;
 
-/* Baud rate specified for talking to serial target systems.  Default
-   is left as -1, so targets can choose their own defaults.  */
-/* FIXME: This means that "show serial baud" and gr_files_info can
-   print -1 or (unsigned int)-1.  This is a Bad User Interface.  */
+/* See serial.h.  */
 
 int baud_rate = -1;
 
@@ -638,7 +635,7 @@ serial_baud_show_cmd (struct ui_file *file, int from_tty,
 		    value);
 }
 
-/* Parity for serial port.  */
+/* See serial.h.  */
 
 int serial_parity = GDBPARITY_NONE;
 
@@ -674,13 +671,13 @@ Use <CR>~. or <CR>~^D to break out."));
 
   add_basic_prefix_cmd ("serial", class_maintenance, _("\
 Set default serial/parallel port configuration."),
-			&serial_set_cmdlist, "set serial ",
+			&serial_set_cmdlist,
 			0/*allow-unknown*/,
 			&setlist);
 
   add_show_prefix_cmd ("serial", class_maintenance, _("\
 Show default serial/parallel port configuration."),
-		       &serial_show_cmdlist, "show serial ",
+		       &serial_show_cmdlist,
 		       0/*allow-unknown*/,
 		       &showlist);
 

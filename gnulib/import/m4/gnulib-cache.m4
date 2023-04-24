@@ -1,4 +1,4 @@
-# Copyright (C) 2002-2020 Free Software Foundation, Inc.
+# Copyright (C) 2002-2021 Free Software Foundation, Inc.
 #
 # This file is free software; you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
@@ -40,14 +40,19 @@
 #  --no-vc-files \
 #  alloca \
 #  canonicalize-lgpl \
+#  chown \
 #  count-one-bits \
 #  dirent \
 #  dirfd \
 #  errno \
+#  ffs \
 #  fnmatch-gnu \
 #  frexpl \
+#  gendocs \
 #  getcwd \
+#  getline \
 #  gettimeofday \
+#  gitlog-to-changelog \
 #  glob \
 #  inet_ntop \
 #  inttypes \
@@ -58,10 +63,12 @@
 #  mkdir \
 #  mkdtemp \
 #  mkostemp \
+#  netdb \
 #  pathmax \
 #  rawmemchr \
 #  readlink \
 #  rename \
+#  select \
 #  setenv \
 #  signal-h \
 #  strchrnul \
@@ -81,14 +88,19 @@ gl_LOCAL_DIR([])
 gl_MODULES([
   alloca
   canonicalize-lgpl
+  chown
   count-one-bits
   dirent
   dirfd
   errno
+  ffs
   fnmatch-gnu
   frexpl
+  gendocs
   getcwd
+  getline
   gettimeofday
+  gitlog-to-changelog
   glob
   inet_ntop
   inttypes
@@ -99,10 +111,12 @@ gl_MODULES([
   mkdir
   mkdtemp
   mkostemp
+  netdb
   pathmax
   rawmemchr
   readlink
   rename
+  select
   setenv
   signal-h
   strchrnul

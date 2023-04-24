@@ -27,6 +27,7 @@
 #include "symtab.h"
 #include "objfiles.h"
 #include "trad-frame.h"
+#include "inferior.h"
 
 #include "obsd-tdep.h"
 #include "sparc64-tdep.h"
@@ -221,6 +222,7 @@ sparc64obsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind sparc64obsd_frame_unwind =
 {
+  "sparc64 openbsd sigtramp",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   sparc64obsd_frame_this_id,
@@ -304,6 +306,7 @@ sparc64obsd_trapframe_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind sparc64obsd_trapframe_unwind =
 {
+  "sparc64 openbsd trap",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   sparc64obsd_trapframe_this_id,
@@ -327,6 +330,9 @@ sparc64obsd_supply_uthread (struct regcache *regcache,
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR fp, fp_addr = addr + SPARC64OBSD_UTHREAD_FP_OFFSET;
   gdb_byte buf[8];
+
+  /* This function calls functions that depend on the global current thread.  */
+  gdb_assert (regcache->ptid () == inferior_ptid);
 
   gdb_assert (regnum >= -1);
 
@@ -372,6 +378,9 @@ sparc64obsd_collect_uthread(const struct regcache *regcache,
   enum bfd_endian byte_order = gdbarch_byte_order (gdbarch);
   CORE_ADDR sp;
   gdb_byte buf[8];
+
+  /* This function calls functions that depend on the global current thread.  */
+  gdb_assert (regcache->ptid () == inferior_ptid);
 
   gdb_assert (regnum >= -1);
 

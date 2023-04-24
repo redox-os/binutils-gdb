@@ -117,7 +117,7 @@ extern sim_event *sim_events_schedule_tracef
  sim_event_handler *handler,
  void *data,
  const char *fmt,
- ...) __attribute__ ((format (printf, 5, 6)));
+ ...) ATTRIBUTE_NULL_PRINTF (5, 6);
 
 extern sim_event *sim_events_schedule_vtracef
 (SIM_DESC sd,
@@ -125,7 +125,7 @@ extern sim_event *sim_events_schedule_vtracef
  sim_event_handler *handler,
  void *data,
  const char *fmt,
- va_list ap);
+ va_list ap) ATTRIBUTE_NULL_PRINTF (5, 0);
 
 
 extern void sim_events_schedule_after_signal
@@ -149,6 +149,17 @@ extern sim_event *sim_events_watch_clock
  void *data);
 
 
+/* Schedule an event when a PC matches a range.  */
+
+extern sim_event *sim_events_watch_pc
+(SIM_DESC sd,
+ int is_within,
+ unsigned64 lb,
+ unsigned64 ub,
+ sim_event_handler *handler,
+ void *data);
+
+
 /* Schedule an event when the test (IS_WITHIN == (VAL >= LB && VAL <=
    UB)) of the NR_BYTES value at HOST_ADDR with BYTE_ORDER endian is
    true.
@@ -161,7 +172,7 @@ extern sim_event *sim_events_watch_sim
 (SIM_DESC sd,
  void *host_addr,
  int nr_bytes,
- int byte_order,
+ enum bfd_endian byte_order,
  int is_within,
  unsigned64 lb,
  unsigned64 ub,
@@ -182,7 +193,7 @@ extern sim_event *sim_events_watch_core
  address_word core_addr,
  unsigned map,
  int nr_bytes,
- int byte_order,
+ enum bfd_endian byte_order,
  int is_within,
  unsigned64 lb,
  unsigned64 ub,

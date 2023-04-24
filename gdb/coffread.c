@@ -36,6 +36,7 @@
 #include "target.h"
 #include "block.h"
 #include "dictionary.h"
+#include "dwarf2/public.h"
 
 #include "coff-pe-read.h"
 
@@ -707,7 +708,7 @@ coff_symfile_read (struct objfile *objfile, symfile_add_flags symfile_flags)
   dwarf2_build_frame_info (objfile);
 
   /* Try to add separate debug file if no symbols table found.   */
-  if (!objfile_has_partial_symbols (objfile))
+  if (!objfile->has_partial_symbols ())
     {
       std::string debugfile = find_separate_debug_file_by_buildid (objfile);
 
@@ -967,25 +968,25 @@ coff_symtab_read (minimal_symbol_reader &reader,
 		   symbol lookup which returned no match.  */
 		break;
 	      }
- 	    else if (cs->c_secnum == N_ABS)
- 	      {
- 		/* Use the correct minimal symbol type (and don't
- 		   relocate) for absolute values.  */
- 		ms_type = mst_abs;
- 		sec = cs_to_section (cs, objfile);
- 		tmpaddr = cs->c_value;
- 	      }
+	    else if (cs->c_secnum == N_ABS)
+	      {
+		/* Use the correct minimal symbol type (and don't
+		   relocate) for absolute values.  */
+		ms_type = mst_abs;
+		sec = cs_to_section (cs, objfile);
+		tmpaddr = cs->c_value;
+	      }
 	    else
 	      {
 		asection *bfd_section = cs_to_bfd_section (cs, objfile);
 
 		sec = cs_to_section (cs, objfile);
 		tmpaddr = cs->c_value;
- 		/* Statics in a PE file also get relocated.  */
- 		if (cs->c_sclass == C_EXT
- 		    || cs->c_sclass == C_THUMBEXTFUNC
- 		    || cs->c_sclass == C_THUMBEXT
- 		    || (pe_file && (cs->c_sclass == C_STAT)))
+		/* Statics in a PE file also get relocated.  */
+		if (cs->c_sclass == C_EXT
+		    || cs->c_sclass == C_THUMBEXTFUNC
+		    || cs->c_sclass == C_THUMBEXT
+		    || (pe_file && (cs->c_sclass == C_STAT)))
 		  offset = objfile->section_offsets[sec];
 
 		if (bfd_section->flags & SEC_CODE)
@@ -1026,7 +1027,7 @@ coff_symtab_read (minimal_symbol_reader &reader,
 		sym = process_coff_symbol
 		  (cs, &main_aux, objfile);
 		SYMBOL_VALUE (sym) = tmpaddr + offset;
-		SYMBOL_SECTION (sym) = sec;
+		sym->set_section_index (sec);
 	      }
 	  }
 	  break;
@@ -1410,8 +1411,8 @@ enter_linenos (file_ptr file_offset, int first_line,
     return;
   if (file_offset < linetab_offset)
     {
-      complaint (_("Line number pointer %ld lower than start of line numbers"),
-		 file_offset);
+      complaint (_("Line number pointer %s lower than start of line numbers"),
+		 plongest (file_offset));
       if (file_offset > linetab_size)	/* Too big to be an offset?  */
 	return;
       file_offset += linetab_offset;	/* Try reading at that linetab
@@ -1565,7 +1566,7 @@ process_coff_symbol (struct coff_symbol *cs,
   /* default assumptions */
   SYMBOL_VALUE (sym) = cs->c_value;
   SYMBOL_DOMAIN (sym) = VAR_DOMAIN;
-  SYMBOL_SECTION (sym) = cs_to_section (cs, objfile);
+  sym->set_section_index (cs_to_section (cs, objfile));
 
   if (ISFCN (cs->c_type))
     {
@@ -2167,7 +2168,6 @@ static const struct sym_fns coff_sym_fns =
 				   for sym_read() */
   coff_symfile_read,		/* sym_read: read a symbol file into
 				   symtab */
-  NULL,				/* sym_read_psymbols */
   coff_symfile_finish,		/* sym_finish: finished with file,
 				   cleanup */
   default_symfile_offsets,	/* sym_offsets: xlate external to
@@ -2179,7 +2179,6 @@ static const struct sym_fns coff_sym_fns =
   default_symfile_relocate,	/* sym_relocate: Relocate a debug
 				   section.  */
   NULL,				/* sym_probe_fns */
-  &psym_functions
 };
 
 void _initialize_coffread ();

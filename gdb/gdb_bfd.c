@@ -134,9 +134,15 @@ show_bfd_sharing  (struct ui_file *file, int from_tty,
   fprintf_filtered (file, _("BFD sharing is %s.\n"), value);
 }
 
-/* When non-zero debugging of the bfd caches is enabled.  */
+/* When true debugging of the bfd caches is enabled.  */
 
-static unsigned int debug_bfd_cache;
+static bool debug_bfd_cache;
+
+/* Print an "bfd-cache" debug statement.  */
+
+#define bfd_cache_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (debug_bfd_cache, "bfd-cache", fmt, ##__VA_ARGS__)
+
 static void
 show_bfd_cache_debug (struct ui_file *file, int from_tty,
 		      struct cmd_list_element *c, const char *value)
@@ -528,10 +534,7 @@ gdb_bfd_open (const char *name, const char *target, int fd,
   if (fstat (fd, &st) < 0)
     {
       /* Weird situation here -- don't cache if we can't stat.  */
-      if (debug_bfd_cache)
-	fprintf_unfiltered (gdb_stdlog,
-			    "Could not stat %s - not caching\n",
-			    name);
+      bfd_cache_debug_printf ("Could not stat %s - not caching", name);
       abfd = bfd_fopen (name, target, FOPEN_RB, fd);
       if (abfd == nullptr)
 	return nullptr;
@@ -552,11 +555,9 @@ gdb_bfd_open (const char *name, const char *target, int fd,
   abfd = (struct bfd *) htab_find_with_hash (gdb_bfd_cache, &search, hash);
   if (bfd_sharing && abfd != NULL)
     {
-      if (debug_bfd_cache)
-	fprintf_unfiltered (gdb_stdlog,
-			    "Reusing cached bfd %s for %s\n",
-			    host_address_to_string (abfd),
-			    bfd_get_filename (abfd));
+      bfd_cache_debug_printf ("Reusing cached bfd %s for %s",
+			      host_address_to_string (abfd),
+			      bfd_get_filename (abfd));
       close (fd);
       return gdb_bfd_ref_ptr::new_reference (abfd);
     }
@@ -565,11 +566,9 @@ gdb_bfd_open (const char *name, const char *target, int fd,
   if (abfd == NULL)
     return NULL;
 
-  if (debug_bfd_cache)
-    fprintf_unfiltered (gdb_stdlog,
-			"Creating new bfd %s for %s\n",
-			host_address_to_string (abfd),
-			bfd_get_filename (abfd));
+  bfd_cache_debug_printf ("Creating new bfd %s for %s",
+			  host_address_to_string (abfd),
+			  bfd_get_filename (abfd));
 
   if (bfd_sharing)
     {
@@ -645,11 +644,9 @@ gdb_bfd_ref (struct bfd *abfd)
 
   gdata = (struct gdb_bfd_data *) bfd_usrdata (abfd);
 
-  if (debug_bfd_cache)
-    fprintf_unfiltered (gdb_stdlog,
-			"Increase reference count on bfd %s (%s)\n",
-			host_address_to_string (abfd),
-			bfd_get_filename (abfd));
+  bfd_cache_debug_printf ("Increase reference count on bfd %s (%s)",
+			  host_address_to_string (abfd),
+			  bfd_get_filename (abfd));
 
   if (gdata != NULL)
     {
@@ -680,19 +677,15 @@ gdb_bfd_unref (struct bfd *abfd)
   gdata->refc -= 1;
   if (gdata->refc > 0)
     {
-      if (debug_bfd_cache)
-	fprintf_unfiltered (gdb_stdlog,
-			    "Decrease reference count on bfd %s (%s)\n",
-			    host_address_to_string (abfd),
-			    bfd_get_filename (abfd));
+      bfd_cache_debug_printf ("Decrease reference count on bfd %s (%s)",
+			      host_address_to_string (abfd),
+			      bfd_get_filename (abfd));
       return;
     }
 
-  if (debug_bfd_cache)
-    fprintf_unfiltered (gdb_stdlog,
-			"Delete final reference count on bfd %s (%s)\n",
-			host_address_to_string (abfd),
-			bfd_get_filename (abfd));
+  bfd_cache_debug_printf ("Delete final reference count on bfd %s (%s)",
+			  host_address_to_string (abfd),
+			  bfd_get_filename (abfd));
 
   archive_bfd = gdata->archive_bfd;
   search.filename = bfd_get_filename (abfd);
@@ -1105,12 +1098,13 @@ filename, file size, file modification time, and file inode."),
 			   &maintenance_set_cmdlist,
 			   &maintenance_show_cmdlist);
 
-  add_setshow_zuinteger_cmd ("bfd-cache", class_maintenance,
-			     &debug_bfd_cache, _("\
-Set bfd cache debugging."), _("\
-Show bfd cache debugging."), _("\
+  add_setshow_boolean_cmd ("bfd-cache", class_maintenance,
+			   &debug_bfd_cache,
+			   _("Set bfd cache debugging."),
+			   _("Show bfd cache debugging."),
+			   _("\
 When non-zero, bfd cache specific debugging is enabled."),
-			     NULL,
-			     &show_bfd_cache_debug,
-			     &setdebuglist, &showdebuglist);
+			   NULL,
+			   &show_bfd_cache_debug,
+			   &setdebuglist, &showdebuglist);
 }

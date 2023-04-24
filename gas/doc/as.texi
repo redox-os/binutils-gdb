@@ -4365,6 +4365,7 @@ Some machine configurations provide additional directives.
 * Asciz::                       @code{.asciz "@var{string}"}@dots{}
 * Attach_to_group::             @code{.attach_to_group @var{name}}
 * Balign::                      @code{.balign [@var{abs-expr}[, @var{abs-expr}]]}
+* Bss::                         @code{.bss @var{subsection}}
 * Bundle directives::           @code{.bundle_align_mode @var{abs-expr}}, etc
 * Byte::                        @code{.byte @var{expressions}}
 * CFI directives::		@code{.cfi_startproc [simple]}, @code{.cfi_endproc}, etc.
@@ -4537,11 +4538,9 @@ Some machine configurations provide additional directives.
 @ifclear no-space-dir
 * Zero::                        @code{.zero @var{size}}
 @end ifclear
-@ifset ELF
 * 2byte::                       @code{.2byte @var{expressions}}
 * 4byte::                       @code{.4byte @var{expressions}}
 * 8byte::                       @code{.8byte @var{bignums}}
-@end ifset
 * Deprecated::                  Deprecated Directives
 @end menu
 
@@ -4710,6 +4709,18 @@ fill pattern as a four byte longword value.  For example, @code{.balignw
 filled in with the value 0x368d (the exact placement of the bytes depends upon
 the endianness of the processor).  If it skips 1 or 3 bytes, the fill value is
 undefined.
+
+@node Bss
+@section @code{.bss @var{subsection}}
+@cindex @code{bss} directive
+
+@code{.bss} tells @command{@value{AS}} to assemble the following statements
+onto the end of the bss section.
+@ifset ELF
+For ELF based targets an optional @var{subsection} expression (which must
+evaluate to a positive integer) can be provided.  In this case the statements
+are appended to the end of the indicated bss subsection.
+@end ifset
 
 @node Bundle directives
 @section Bundle directives
@@ -7505,7 +7516,6 @@ so it can take an optional second argument of the value to store in the bytes
 instead of zero.  Using @samp{.zero} in this way would be confusing however.
 @end ifclear
 
-@ifset ELF
 @node 2byte
 @section @code{.2byte @var{expression} [, @var{expression}]*}
 @cindex @code{2byte} directive
@@ -7525,8 +7535,6 @@ This directive does not apply any alignment before or after inserting the
 values.  As a result of this, if relocations are generated, they may be
 different from those used for inserting values with a guaranteed alignment.
 
-This directive is only available for ELF targets,
-
 @node 4byte
 @section @code{.4byte @var{expression} [, @var{expression}]*}
 @cindex @code{4byte} directive
@@ -7544,8 +7552,6 @@ long values into the output.
 
 Like the @option{.2byte} directive, except that it inserts unaligned, eight
 byte long bignum values into the output.
-
-@end ifset
 
 @node Deprecated
 @section Deprecated Directives

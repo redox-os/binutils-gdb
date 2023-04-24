@@ -967,7 +967,7 @@ frv_analyze_prologue (struct gdbarch *gdbarch, CORE_ADDR pc,
       info->saved_regs[pc_regnum] = info->saved_regs[lr_regnum];
 
       /* Save the previous frame's computed SP value.  */
-      trad_frame_set_value (info->saved_regs, sp_regnum, info->prev_sp);
+      info->saved_regs[sp_regnum].set_value (info->prev_sp);
     }
 
   return last_prologue_pc;
@@ -1411,6 +1411,7 @@ frv_frame_prev_register (struct frame_info *this_frame,
 }
 
 static const struct frame_unwind frv_frame_unwind = {
+  "frv prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   frv_frame_this_id,

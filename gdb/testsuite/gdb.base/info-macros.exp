@@ -22,14 +22,16 @@ if [using_fission] {
 }
 
 get_compiler_info
-if ![test_compiler_info gcc*] {
-  untested "no compiler info"
-  return -1
+if { [test_compiler_info gcc*] } {
+    # Don't use "debug" here.  Otherwise "-g" would be appended to the gcc
+    # command line, possibly overriding "-g3" (depending on gcc version).
+    set options "additional_flags=-g3"
+} elseif { [test_compiler_info clang*] } {
+    set options "additional_flags=-fdebug-macro"
+} else {
+    untested "no compiler info"
+    return -1
 }
-
-# Don't use "debug" here.  Otherwise "-g" would be appended to the gcc
-# command line, possibly overriding "-g3" (depending on gcc version).
-set options "additional_flags=-g3"
 
 if { [prepare_for_testing "failed to prepare" ${testfile} ${srcfile} $options] } {
     return -1
@@ -59,9 +61,11 @@ gdb_test "info macro --" \
 	 "You must follow.*with the name.*you want to see.*\[^\r\n\]*\[\r\n\]"
 
 gdb_test "info macro -- " \
-	 "You must follow.*with the name.*you want to see.*\[^\r\n\]*\[\r\n\]"
+	 "You must follow.*with the name.*you want to see.*\[^\r\n\]*\[\r\n\]" \
+	 "info macro -- <EOL>"
 gdb_test "info macro  -- " \
-	 "You must follow.*with the name.*you want to see.*\[^\r\n\]*\[\r\n\]"
+	 "You must follow.*with the name.*you want to see.*\[^\r\n\]*\[\r\n\]" \
+	 "info macro  -- <EOL>"
 
 gdb_test "info macro -invalid-option" \
 	 "Unrecognized option.*Try \"help info macro\"\."
@@ -271,6 +275,9 @@ gdb_test_multiple_with_read1_timeout_factor 10 "$test" $testname {
 
 set test "info macros info-macros.c:42"
 
-set r1 ".*define DEF_MACROS"
-set r2 ".*define ONE"
-gdb_test "$test" "$r1$r2.*"
+set r1 "#define DEF_MACROS "
+set r2 "#define ONE"
+gdb_test_lines "$test" "" [multi_line \
+			       "" \
+			       "$r1" \
+			       "(.*\r\n)?$r2"]

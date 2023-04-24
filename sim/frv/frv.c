@@ -17,6 +17,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #define WANT_CPU
 #define WANT_CPU_FRVBF
 
@@ -28,6 +31,7 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "bfd.h"
 #include "gdb/sim-frv.h"
 #include <math.h>
+#include <stdlib.h>
 
 /* Maintain a flag in order to know when to write the address of the next
    VLIW instruction into the LR register.  Used by JMPL. JMPIL, and CALL
@@ -1178,10 +1182,12 @@ frvbf_shift_left_arith_saturate (SIM_CPU *current_cpu, SI arg1, SI arg2)
 
   /* Signed shift by 31 or greater saturates by definition.  */
   if (arg2 >= 31)
-    if (arg1 > 0)
-      return (SI) 0x7fffffff;
-    else
-      return (SI) 0x80000000;
+    {
+      if (arg1 > 0)
+	return (SI) 0x7fffffff;
+      else
+	return (SI) 0x80000000;
+    }
 
   /* OK, arg2 is between 1 and 31.  */
   neg_arg1 = (arg1 < 0);

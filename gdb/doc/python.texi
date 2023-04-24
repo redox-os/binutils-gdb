@@ -103,6 +103,44 @@ controlled using @code{set python print-stack}: if @code{full}, then
 full Python stack printing is enabled; if @code{none}, then Python stack
 and message printing is disabled; if @code{message}, the default, only
 the message component of the error is printed.
+
+@kindex set python ignore-environment
+@item set python ignore-environment @r{[}on@r{|}off@r{]}
+By default this option is @samp{off}, and, when @value{GDBN}
+initializes its internal Python interpreter, the Python interpreter
+will check the environment for variables that will effect how it
+behaves, for example @env{PYTHONHOME}, and
+@env{PYTHONPATH}@footnote{See the ENVIRONMENT VARIABLES section of
+@command{man 1 python} for a comprehensive list.}.
+
+If this option is set to @samp{on} before Python is initialized then
+Python will ignore all such environment variables.  As Python is
+initialized early during @value{GDBN}'s startup process, then this
+option must be placed into the early initialization file
+(@pxref{Initialization Files}) to have the desired effect.
+
+This option is equivalent to passing @option{-E} to the real
+@command{python} executable.
+
+@kindex set python dont-write-bytecode
+@item set python dont-write-bytecode @r{[}auto@r{|}on@r{|}off@r{]}
+When this option is @samp{off}, then, once @value{GDBN} has
+initialized the Python interpreter, the interpreter will byte-compile
+any Python modules that it imports and write the byte code to disk in
+@file{.pyc} files.
+
+If this option is set to @samp{on} before Python is initialized then
+Python will no longer write the byte code to disk.  As Python is
+initialized early during @value{GDBN}'s startup process, then this
+option must be placed into the early initialization file
+(@pxref{Initialization Files}) to have the desired effect.
+
+By default this option is set to @samp{auto}, in this mode Python will
+check the environment variable @env{PYTHONDONTWRITEBYTECODE} to see
+if it should write out byte-code or not.
+
+This option is equivalent to passing @option{-B} to the real
+@command{python} executable.
 @end table
 
 It is also possible to execute a Python script from the @value{GDBN}
@@ -113,6 +151,24 @@ interpreter:
 The script name must end with @samp{.py} and @value{GDBN} must be configured
 to recognize the script language based on filename extension using
 the @code{script-extension} setting.  @xref{Extending GDB, ,Extending GDB}.
+@end table
+
+The following commands are intended to help debug @value{GDBN} itself:
+
+@table @code
+@kindex set debug py-breakpoint
+@kindex show debug py-breakpoint
+@item set debug py-breakpoint on@r{|}off
+@itemx show debug py-breakpoint
+When @samp{on}, @value{GDBN} prints debug messages related to the
+Python breakpoint API.  This is @samp{off} by default.
+
+@kindex set debug py-unwind
+@kindex show debug py-unwind
+@item set debug py-unwind on@r{|}off
+@itemx show debug py-unwind
+When @samp{on}, @value{GDBN} prints debug messages related to the
+Python unwinder API.  This is @samp{off} by default.
 @end table
 
 @node Python API
@@ -559,7 +615,7 @@ rather recognizes it when thrown from user Python code.  Example:
 >    argv = gdb.string_to_argv (args)
 >    if len (argv) != 0:
 >      raise gdb.GdbError ("hello-world takes no arguments")
->    print "Hello, World!"
+>    print ("Hello, World!")
 >HelloWorld ()
 >end
 (gdb) hello-world 42
@@ -1125,12 +1181,32 @@ there is no associated objfile.
 The following methods are provided:
 
 @defun Type.fields ()
-For structure and union types, this method returns the fields.  Range
-types have two fields, the minimum and maximum values.  Enum types
-have one field per enum constant.  Function and method types have one
-field per parameter.  The base types of C@t{++} classes are also
-represented as fields.  If the type has no fields, or does not fit
-into one of these categories, an empty sequence will be returned.
+
+Return the fields of this type.  The behavior depends on the type code:
+
+@itemize @bullet
+
+@item
+For structure and union types, this method returns the fields.
+
+@item
+Range types have two fields, the minimum and maximum values.
+
+@item
+Enum types have one field per enum constant.
+
+@item
+Function and method types have one field per parameter.  The base types of
+C@t{++} classes are also represented as fields.
+
+@item
+Array types have one field representing the array's range.
+
+@item
+If the type does not fit into one of these categories, a @code{TypeError}
+is raised.
+
+@end itemize
 
 Each field is a @code{gdb.Field} object, with some pre-defined attributes:
 @table @code
@@ -1585,7 +1661,7 @@ example above might be written.
 @smallexample
 def str_lookup_function(val):
     lookup_tag = val.type.tag
-    if lookup_tag == None:
+    if lookup_tag is None:
         return None
     regex = re.compile("^std::basic_string<char,.*>$")
     if regex.match(lookup_tag):
@@ -2291,7 +2367,7 @@ class InlinedFrameDecorator(FrameDecorator):
         super(InlinedFrameDecorator, self).__init__(fobj)
 
     def function(self):
-        frame = fobj.inferior_frame()
+        frame = self.inferior_frame()
         name = str(frame.name())
 
         if frame.type() == gdb.INLINE_FRAME:
@@ -2527,6 +2603,11 @@ Each attribute value should be an instance of @code{gdb.Value}.
 Return the @code{gdb.Architecture} (@pxref{Architectures In Python})
 for this @code{gdb.PendingFrame}.  This represents the architecture of
 the particular frame being unwound.
+@end defun
+
+@defun PendingFrame.level ()
+Return an integer, the stack frame level for this frame.
+@xref{Frames, ,Stack Frames}.
 @end defun
 
 @subheading Unwinder Output: UnwindInfo
@@ -2989,6 +3070,12 @@ A @code{gdb.Inferior} object has the following attributes:
 ID of inferior, as assigned by GDB.
 @end defvar
 
+@defvar Inferior.connection_num
+ID of inferior's connection as assigned by @value{GDBN}, or None if
+the inferior is not connected to a target.
+@xref{Inferiors Connections and Programs}.
+@end defvar
+
 @defvar Inferior.pid
 Process ID of the inferior, as assigned by the underlying operating
 system.
@@ -3100,8 +3187,8 @@ Here is an example:
 
 @smallexample
 def exit_handler (event):
-    print "event type: exit"
-    print "exit code: %d" % (event.exit_code)
+    print ("event type: exit")
+    print ("exit code: %d" % (event.exit_code))
 
 gdb.events.exited.connect (exit_handler)
 @end smallexample
@@ -3921,7 +4008,7 @@ class HelloWorld (gdb.Command):
     super (HelloWorld, self).__init__ ("hello-world", gdb.COMMAND_USER)
 
   def invoke (self, arg, from_tty):
-    print "Hello, World!"
+    print ("Hello, World!")
 
 HelloWorld ()
 @end smallexample
@@ -4041,6 +4128,7 @@ class ExampleParam (gdb.Parameter):
         self.value = self.saved_value
         raise gdb.GdbError('Failed to validate')
       self.saved_value = self.value
+      return ""
 @end smallexample
 @end defun
 
@@ -4309,7 +4397,7 @@ def clear_objfiles_handler(event):
     event.progspace.expensive_computation = None
 def expensive(symbol):
     """A mock routine to perform an "expensive" computation on symbol."""
-    print "Computing the answer to the ultimate question ..."
+    print ("Computing the answer to the ultimate question ...")
     return 42
 def new_objfile_handler(event):
     objfile = event.new_objfile
@@ -4654,7 +4742,7 @@ versions.  Using it, you could write:
 reason = gdb.selected_frame().unwind_stop_reason ()
 reason_str =  gdb.frame_stop_reason_string (reason)
 if reason >=  gdb.FRAME_UNWIND_FIRST_ERROR:
-    print "An error occured: %s" % reason_str
+    print ("An error occured: %s" % reason_str)
 @end smallexample
 @end table
 
@@ -4728,6 +4816,10 @@ argument must be a string or a @code{gdb.Symbol} object; @var{block} must be a
 @defun Frame.select ()
 Set this frame to be the selected frame.  @xref{Stack, ,Examining the
 Stack}.
+@end defun
+
+@defun Frame.level ()
+Return an integer, the stack frame level for this frame.  @xref{Frames, ,Stack Frames}.
 @end defun
 
 @node Blocks In Python
@@ -5131,6 +5223,10 @@ Value is a local variable.
 Value not used.  Symbols in the domain @code{SYMBOL_STRUCT_DOMAIN} all
 have this class.
 
+@vindex SYMBOL_LOC_LABEL
+@item gdb.SYMBOL_LOC_LABEL
+Value is a label.
+
 @vindex SYMBOL_LOC_BLOCK
 @item gdb.SYMBOL_LOC_BLOCK
 Value is a block.
@@ -5153,8 +5249,8 @@ The value does not actually exist in the program.
 @item gdb.SYMBOL_LOC_COMPUTED
 The value's address is a computed location.
 
-@vindex SYMBOL_LOC_COMPUTED
-@item gdb.SYMBOL_LOC_COMPUTED
+@vindex SYMBOL_LOC_COMMON_BLOCK
+@item gdb.SYMBOL_LOC_COMMON_BLOCK
 The value's address is a symbol.  This is only used for Fortran common
 blocks.
 @end vtable
@@ -5295,7 +5391,7 @@ example illustrating iterating over a line table.
 symtab = gdb.selected_frame().find_sal().symtab
 linetable = symtab.linetable()
 for line in linetable:
-   print "Line: "+str(line.line)+" Address: "+hex(line.pc)
+   print ("Line: "+str(line.line)+" Address: "+hex(line.pc))
 @end smallexample
 
 This will have the following output:
@@ -5402,6 +5498,10 @@ module:
 @item gdb.BP_BREAKPOINT
 Normal code breakpoint.
 
+@vindex BP_HARDWARE_BREAKPOINT
+@item gdb.BP_HARDWARE_BREAKPOINT
+Hardware assisted code breakpoint.
+
 @vindex BP_WATCHPOINT
 @item gdb.BP_WATCHPOINT
 Watchpoint breakpoint.
@@ -5417,9 +5517,16 @@ Hardware assisted read watchpoint.
 @vindex BP_ACCESS_WATCHPOINT
 @item gdb.BP_ACCESS_WATCHPOINT
 Hardware assisted access watchpoint.
+
+@vindex BP_CATCHPOINT
+@item gdb.BP_CATCHPOINT
+Catchpoint.  Currently, this type can't be used when creating
+@code{gdb.Breakpoint} objects, but will be present in
+@code{gdb.Breakpoint} objects reported from
+@code{gdb.BreakpointEvent}s (@pxref{Events In Python}).
 @end vtable
 
-The available watchpoint types represented by constants are defined in the
+The available watchpoint types are represented by constants defined in the
 @code{gdb} module:
 
 @vtable @code
@@ -5618,11 +5725,11 @@ method:
 @smallexample
 class MyFinishBreakpoint (gdb.FinishBreakpoint)
     def stop (self):
-        print "normal finish"
+        print ("normal finish")
         return True
     
     def out_of_scope ():
-        print "abnormal finish"
+        print ("abnormal finish")
 @end smallexample 
 @end defun
 
@@ -5844,6 +5951,11 @@ user changes the TUI layout, windows no longer visible in the new
 layout will be destroyed.  At this point, the @code{gdb.TuiWindow}
 will no longer be valid, and methods (and attributes) other than
 @code{is_valid} will throw an exception.
+
+When the TUI is disabled using @code{tui disable} (@pxref{TUI
+Commands,,tui disable}) the window is hidden rather than destroyed,
+but @code{is_valid} will still return @code{False} and other methods
+(and attributes) will still throw an exception.
 @end defun
 
 @defvar TuiWindow.width
@@ -5863,10 +5975,14 @@ displayed above the window.  This attribute can be modified.
 Remove all the contents of the window.
 @end defun
 
-@defun TuiWindow.write (@var{string})
+@defun TuiWindow.write (@var{string} @r{[}, @var{full_window}@r{]})
 Write @var{string} to the window.  @var{string} can contain ANSI
 terminal escape styling sequences; @value{GDBN} will translate these
 as appropriate for the terminal.
+
+If the @var{full_window} parameter is @code{True}, then @var{string}
+contains the full contents of the window.  This is similar to calling
+@code{erase} before @code{write}, but avoids the flickering.
 @end defun
 
 The factory function that you supply should return an object
@@ -5914,6 +6030,13 @@ amount by which to scroll, with negative numbers meaning to scroll
 backward.  In the TUI model, it is the viewport that moves, not the
 contents.  A positive argument should cause the viewport to move down,
 and so the content should appear to move up.
+@end defun
+
+@defun Window.click (@var{x}, @var{y}, @var{button})
+This is called on a mouse click in this window.  @var{x} and @var{y} are
+the mouse coordinates inside the window (0-based), and @var{button}
+specifies which mouse button was used, whose values can be 1 (left),
+2 (middle), or 3 (right).
 @end defun
 
 @node Python Auto-loading

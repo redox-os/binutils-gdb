@@ -198,7 +198,7 @@ cris_sigtramp_start (struct frame_info *this_frame)
   CORE_ADDR pc = get_frame_pc (this_frame);
   gdb_byte buf[SIGTRAMP_LEN];
 
-  if (!safe_frame_unwind_memory (this_frame, pc, buf, SIGTRAMP_LEN))
+  if (!safe_frame_unwind_memory (this_frame, pc, buf))
     return 0;
 
   if (((buf[1] << 8) + buf[0]) != SIGTRAMP_INSN0)
@@ -207,7 +207,7 @@ cris_sigtramp_start (struct frame_info *this_frame)
 	return 0;
 
       pc -= SIGTRAMP_OFFSET1;
-      if (!safe_frame_unwind_memory (this_frame, pc, buf, SIGTRAMP_LEN))
+      if (!safe_frame_unwind_memory (this_frame, pc, buf))
 	return 0;
     }
 
@@ -226,7 +226,7 @@ cris_rt_sigtramp_start (struct frame_info *this_frame)
   CORE_ADDR pc = get_frame_pc (this_frame);
   gdb_byte buf[SIGTRAMP_LEN];
 
-  if (!safe_frame_unwind_memory (this_frame, pc, buf, SIGTRAMP_LEN))
+  if (!safe_frame_unwind_memory (this_frame, pc, buf))
     return 0;
 
   if (((buf[1] << 8) + buf[0]) != SIGTRAMP_INSN0)
@@ -235,7 +235,7 @@ cris_rt_sigtramp_start (struct frame_info *this_frame)
 	return 0;
 
       pc -= SIGTRAMP_OFFSET1;
-      if (!safe_frame_unwind_memory (this_frame, pc, buf, SIGTRAMP_LEN))
+      if (!safe_frame_unwind_memory (this_frame, pc, buf))
 	return 0;
     }
 
@@ -437,6 +437,7 @@ cris_sigtramp_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind cris_sigtramp_frame_unwind =
 {
+  "cris sigtramp",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   cris_sigtramp_frame_this_id,
@@ -900,6 +901,7 @@ cris_push_dummy_call (struct gdbarch *gdbarch, struct value *function,
 
 static const struct frame_unwind cris_frame_unwind = 
 {
+  "cris prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   cris_frame_this_id,
@@ -1259,8 +1261,7 @@ cris_scan_prologue (CORE_ADDR pc, struct frame_info *this_frame,
 
   /* The previous frame's SP needed to be computed.  Save the computed
      value.  */
-  trad_frame_set_value (info->saved_regs,
-			gdbarch_sp_regnum (gdbarch), info->prev_sp);
+  info->saved_regs[gdbarch_sp_regnum (gdbarch)].set_value (info->prev_sp);
 
   if (!info->leaf_function)
     {
@@ -3880,7 +3881,6 @@ set_cris_version (const char *ignore_args, int from_tty,
   usr_cmd_cris_version_valid = 1;
   
   /* Update the current architecture, if needed.  */
-  gdbarch_info_init (&info);
   if (!gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__, 
 		    _("cris_gdbarch_update: failed to update architecture."));
@@ -3893,7 +3893,6 @@ set_cris_mode (const char *ignore_args, int from_tty,
   struct gdbarch_info info;
 
   /* Update the current architecture, if needed.  */
-  gdbarch_info_init (&info);
   if (!gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__, 
 		    "cris_gdbarch_update: failed to update architecture.");
@@ -3906,7 +3905,6 @@ set_cris_dwarf2_cfi (const char *ignore_args, int from_tty,
   struct gdbarch_info info;
 
   /* Update the current architecture, if needed.  */
-  gdbarch_info_init (&info);
   if (!gdbarch_update_p (info))
     internal_error (__FILE__, __LINE__, 
 		    _("cris_gdbarch_update: failed to update architecture."));

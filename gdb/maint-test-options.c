@@ -409,7 +409,7 @@ maintenance_test_options_unknown_is_operand_command_completer
 }
 
 /* Command list for maint test-options.  */
-struct cmd_list_element *maintenance_test_options_list;
+static cmd_list_element *maintenance_test_options_list;
 
 
 void _initialize_maint_test_options ();
@@ -422,8 +422,7 @@ _initialize_maint_test_options ()
 			_("\
 Generic command for testing the options infrastructure."),
 			&maintenance_test_options_list,
-			"maintenance test-options ", 0,
-			&maintenancelist);
+			0, &maintenancelist);
 
   const auto def_group = make_test_options_options_def_group (nullptr);
 

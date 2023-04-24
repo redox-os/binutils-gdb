@@ -71,6 +71,7 @@
 
 #include "language.h"
 #include "cli/cli-option.h"
+#include "gdbsupport/common-debug.h"
 
 struct symtab_and_line;
 struct frame_unwind;
@@ -169,6 +170,9 @@ struct frame_id
      Caller of inlined function will have it zero, each more inner called frame
      will have it increasingly one, two etc.  Similarly for TAILCALL_FRAME.  */
   int artificial_depth;
+
+  /* Return a string representation of this frame id.  */
+  std::string to_string () const;
 };
 
 /* Save and restore the currently selected frame.  */
@@ -211,7 +215,17 @@ extern const struct frame_id outer_frame_id;
 
 /* Flag to control debugging.  */
 
-extern unsigned int frame_debug;
+extern bool frame_debug;
+
+/* Print a "frame" debug statement.  */
+
+#define frame_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (frame_debug, "frame", fmt, ##__VA_ARGS__)
+
+/* Print "frame" enter/exit debug statements.  */
+
+#define FRAME_SCOPED_DEBUG_ENTER_EXIT \
+  scoped_debug_enter_exit (frame_debug, "frame")
 
 /* Construct a frame ID.  The first parameter is the frame's constant
    stack address (typically the outer-bound), and the second the
@@ -257,11 +271,6 @@ extern bool frame_id_artificial_p (frame_id l);
 
 /* Returns true when L and R identify the same frame.  */
 extern bool frame_id_eq (frame_id l, frame_id r);
-
-/* Write the internal representation of a frame ID on the specified
-   stream.  */
-extern void fprint_frame_id (struct ui_file *file, struct frame_id id);
-
 
 /* Frame types.  Some are real, some are signal trampolines, and some
    are completely artificial (dummy).  */
@@ -653,15 +662,15 @@ extern void put_frame_register (struct frame_info *frame, int regnum,
    contents are optimized out or unavailable, set *OPTIMIZEDP,
    *UNAVAILABLEP accordingly.  */
 extern bool get_frame_register_bytes (frame_info *frame, int regnum,
-				      CORE_ADDR offset, int len,
-				      gdb_byte *myaddr,
+				      CORE_ADDR offset,
+				      gdb::array_view<gdb_byte> buffer,
 				      int *optimizedp, int *unavailablep);
 
-/* Write LEN bytes to one or multiple registers starting with REGNUM
-   in frame FRAME, starting at OFFSET, into BUF.  */
+/* Write bytes from BUFFER to one or multiple registers starting with REGNUM
+   in frame FRAME, starting at OFFSET.  */
 extern void put_frame_register_bytes (struct frame_info *frame, int regnum,
-				      CORE_ADDR offset, int len,
-				      const gdb_byte *myaddr);
+				      CORE_ADDR offset,
+				      gdb::array_view<const gdb_byte> buffer);
 
 /* Unwind the PC.  Strictly speaking return the resume address of the
    calling frame.  For GDB, `pc' is the resume address and not a
@@ -687,7 +696,7 @@ extern void frame_pop (struct frame_info *frame);
    adaptor frames this should be ok.  */
 
 extern void get_frame_memory (struct frame_info *this_frame, CORE_ADDR addr,
-			      gdb_byte *buf, int len);
+			      gdb::array_view<gdb_byte> buffer);
 extern LONGEST get_frame_memory_signed (struct frame_info *this_frame,
 					CORE_ADDR memaddr, int len);
 extern ULONGEST get_frame_memory_unsigned (struct frame_info *this_frame,
@@ -696,7 +705,7 @@ extern ULONGEST get_frame_memory_unsigned (struct frame_info *this_frame,
 /* Same as above, but return true zero when the entire memory read
    succeeds, false otherwise.  */
 extern bool safe_frame_unwind_memory (frame_info *this_frame, CORE_ADDR addr,
-				      gdb_byte *buf, int len);
+				      gdb::array_view<gdb_byte> buffer);
 
 /* Return this frame's architecture.  */
 extern struct gdbarch *get_frame_arch (struct frame_info *this_frame);

@@ -19,17 +19,14 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
 
 #include "hw-main.h"
 #include "hw-base.h"
 
-#if HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
-#if HAVE_STRING_H
 #include <string.h>
-#endif
 
 /* Address methods */
 

@@ -132,9 +132,9 @@ bsd_kvm_target_open (const char *arg, int from_tty)
     error (("%s"), errbuf);
 
   bsd_kvm_corefile = filename;
-  unpush_target (&bsd_kvm_ops);
+  current_inferior ()->unpush_target (&bsd_kvm_ops);
   core_kd = temp_kd;
-  push_target (&bsd_kvm_ops);
+  current_inferior ()->push_target (&bsd_kvm_ops);
 
   thread_info *thr = add_thread_silent (&bsd_kvm_ops, bsd_kvm_ptid);
   switch_to_thread (thr);
@@ -388,7 +388,7 @@ bsd_kvm_add_target (int (*supply_pcb)(struct regcache *, struct pcb *))
   
   add_prefix_cmd ("kvm", class_obscure, bsd_kvm_cmd, _("\
 Generic command for manipulating the kernel memory interface."),
-		  &bsd_kvm_cmdlist, "kvm ", 0, &cmdlist);
+		  &bsd_kvm_cmdlist, 0, &cmdlist);
 
 #ifndef HAVE_STRUCT_THREAD_TD_PCB
   add_cmd ("proc", class_obscure, bsd_kvm_proc_cmd,

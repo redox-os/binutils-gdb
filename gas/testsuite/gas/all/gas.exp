@@ -64,8 +64,10 @@ if {    ![istarget alpha*-*-*vms*]
      && ![istarget microblaze-*-*]
      && ![istarget mn10300-*-*]
      && ![istarget msp430*-*-*]
+     && ![istarget powerpc*-*-aix*]
      && ![istarget riscv*-*-*]
      && ![istarget rl78-*-*]
+     && ![istarget rs6000*-*-aix*]
      && ![istarget rx-*-*] } then {
     gas_test_error "diff1.s" "" "difference of two undefined symbols"
 }
@@ -370,6 +372,27 @@ switch -glob $target_triplet {
     }
 }
 
+# Various targets use too custom handling to be able to sensibly create
+# common expecations for this test.  Also .equ works differently on some
+# targets.
+if {    ![istarget avr-*-*]
+     && ![istarget bfin-*-*]
+     && ![istarget cris*-*-*]
+     && ![istarget dlx-*-*]
+     && ![istarget hppa*-*-*]
+     && ![istarget m68k-*-*]
+     && ![istarget nios2-*-*]
+     && ![istarget pj-*-*]
+     && ![istarget sh*-*-*]
+     && ![istarget *c4x-*-*]
+     && ![istarget *c54x-*-*]
+     && ![istarget *c6x-*-*]
+     && ![istarget z80-*-*] } then {
+    # Some further targets' custom handling fails to recognize the overflows.
+    setup_xfail "crx-*-*" "h8300-*-*" "mcore-*-*" "mn10200-*-*" "mn10300-*-*" "msp430-*-*" "ns32k-*-*"
+    run_list_test "overflow"
+}
+
 if {  ([istarget "i*86-*-*pe*"] && ![istarget "i*86-*-openbsd*"]) \
     || [istarget "i*86-*-cygwin*"] \
     || [istarget "i*86-*-mingw32*"] } {
@@ -396,11 +419,6 @@ run_dump_test sleb128-9
 # MeP put bytes into packets.
 if { ![istarget "tic4x*-*-*"] && ![istarget "tic54x*-*-*"] && ![istarget "hppa*-*-hpux*"] && ![istarget "mep*-*-*"] } {
     run_dump_test relax
-}
-
-# powerpc and s390 allow a string argument to .byte
-if { ![istarget "powerpc*-*-*"] && ![istarget "rs6000*-*-*"] && ![istarget "s390*-*-*"] } {
-    run_dump_test byte
 }
 
 run_dump_test quad
@@ -474,3 +492,5 @@ gas_test "pr23938.s" "" "" ".xstabs"
 
 run_dump_test "nop"
 run_dump_test "asciz"
+run_dump_test "pr27384"
+run_dump_test "pr27381"
