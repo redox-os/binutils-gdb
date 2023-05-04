@@ -2409,7 +2409,7 @@ elf_x86_64_tpoff (struct bfd_link_info *info, bfd_vma address)
 
 /* Fill a byte with either the FS or GS segment prefix */
 static void
-fill_segment_prefix_byte (bfd_byte *ptr, bfd_boolean use_gs)
+fill_segment_prefix_byte (bfd_byte *ptr, bool use_gs)
 {
 #define FS_SEGMENT_PREFIX 0x64
 #define GS_SEGMENT_PREFIX 0x65
@@ -2442,7 +2442,7 @@ elf_x86_64_relocate_section (bfd *output_bfd,
   Elf_Internal_Rela *wrel;
   Elf_Internal_Rela *relend;
   unsigned int plt_entry_size;
-  bfd_boolean use_gs = info->use_gs_for_tls;
+  bool use_gs = info->use_gs_for_tls;
   bool status;
 
   /* Skip if check_relocs failed.  */
