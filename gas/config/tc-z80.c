@@ -175,6 +175,11 @@ match_ext_table [] =
   {"xdcb",    INS_ROT_II_LD, 0, 0, "instructions like RL (IX+d),R (DD/FD CB dd oo)" }
 };
 
+
+static int signed_overflow (signed long value, unsigned bitsize);
+static int unsigned_overflow (unsigned long value, unsigned bitsize);
+static int is_overflow (long value, unsigned bitsize);
+
 static void
 setup_march (const char *name, int *ok, int *err, int *mode)
 {
@@ -720,7 +725,7 @@ md_atof (int type, char *litP, int *sizeP)
 	return str_to_double (litP, sizeP);
       break;
     }
-  return ieee_md_atof (type, litP, sizeP, FALSE);
+  return ieee_md_atof (type, litP, sizeP, false);
 }
 
 valueT
@@ -842,7 +847,7 @@ is_indir (const char *s)
 }
 
 /* Check whether a symbol involves a register.  */
-static bfd_boolean
+static bool
 contains_register (symbolS *sym)
 {
   if (sym)
@@ -852,17 +857,17 @@ contains_register (symbolS *sym)
       switch (ex->X_op)
 	{
 	case O_register:
-	  return TRUE;
+	  return true;
 
 	case O_add:
 	case O_subtract:
 	  if (ex->X_op_symbol && contains_register (ex->X_op_symbol))
-	    return TRUE;
+	    return true;
 	  /* Fall through.  */
 	case O_uminus:
 	case O_symbol:
 	  if (ex->X_add_symbol && contains_register (ex->X_add_symbol))
-	    return TRUE;
+	    return true;
 	  break;
 
 	default:
@@ -870,7 +875,7 @@ contains_register (symbolS *sym)
 	}
     }
 
-  return FALSE;
+  return false;
 }
 
 /* Parse general expression, not looking for indexed addressing.  */
@@ -1129,6 +1134,8 @@ emit_data_val (expressionS * val, int size)
   if (val->X_op == O_constant)
     {
       int i;
+      if (is_overflow (val->X_add_number, size*8))
+	as_warn ( _("%d-bit overflow (%+ld)"), size*8, val->X_add_number);
       for (i = 0; i < size; ++i)
 	p[i] = (char)(val->X_add_number >> (i*8));
       return;
@@ -1153,7 +1160,7 @@ emit_data_val (expressionS * val, int size)
 
   if (size <= 2 && val->X_op_symbol)
     {
-      bfd_boolean simplify = TRUE;
+      bool simplify = true;
       int shift = symbol_get_value_expression (val->X_op_symbol)->X_add_number;
       if (val->X_op == O_bit_and && shift == (1 << (size*8))-1)
 	shift = 0;
@@ -1168,7 +1175,7 @@ emit_data_val (expressionS * val, int size)
 	    case 8: r_type = BFD_RELOC_Z80_BYTE1; break;
 	    case 16: r_type = BFD_RELOC_Z80_BYTE2; break;
 	    case 24: r_type = BFD_RELOC_Z80_BYTE3; break;
-	    default: simplify = FALSE;
+	    default: simplify = false;
 	    }
 	}
       else /* if (size == 2) */
@@ -1177,7 +1184,24 @@ emit_data_val (expressionS * val, int size)
 	    {
 	    case 0: r_type = BFD_RELOC_Z80_WORD0; break;
 	    case 16: r_type = BFD_RELOC_Z80_WORD1; break;
-	    default: simplify = FALSE;
+	    case 8:
+	    case 24: /* add two byte fixups */
+	      val->X_op = O_symbol;
+	      val->X_op_symbol = NULL;
+	      val->X_add_number = 0;
+	      if (shift == 8)
+		{
+		  fix_new_exp (frag_now, p++ - frag_now->fr_literal, 1, val, false,
+			       BFD_RELOC_Z80_BYTE1);
+		  /* prepare to next byte */
+		  r_type = BFD_RELOC_Z80_BYTE2;
+		}
+	      else
+		r_type = BFD_RELOC_Z80_BYTE3; /* high byte will be 0 */
+	      size = 1;
+	      simplify = false;
+	      break;
+	    default: simplify = false;
 	    }
 	}
 
@@ -1189,7 +1213,7 @@ emit_data_val (expressionS * val, int size)
 	}
     }
 
-  fix_new_exp (frag_now, p - frag_now->fr_literal, size, val, FALSE, r_type);
+  fix_new_exp (frag_now, p - frag_now->fr_literal, size, val, false, r_type);
 }
 
 static void
@@ -1226,7 +1250,7 @@ emit_byte (expressionS * val, bfd_reloc_code_real_type r_type)
     {
       /* For symbols only, constants are stored at begin of function.  */
       fix_new_exp (frag_now, p - frag_now->fr_literal, 1, val,
-		   (r_type == BFD_RELOC_8_PCREL) ? TRUE : FALSE, r_type);
+		   r_type == BFD_RELOC_8_PCREL, r_type);
     }
 }
 
@@ -1636,7 +1660,7 @@ emit_push (char prefix, char opcode, const char * args)
   *q = 0x8A;
 
   q = frag_more (2);
-  fix_new_exp (frag_now, q - frag_now->fr_literal, 2, &arg, FALSE,
+  fix_new_exp (frag_now, q - frag_now->fr_literal, 2, &arg, false,
                BFD_RELOC_Z80_16_BE);
 
   return p;
@@ -2374,6 +2398,8 @@ emit_ld_r_m (expressionS *dst, expressionS *src)
 	  *q = (ins_ok & INS_GBZ80) ? 0xFA : 0x3A;
           emit_word (src);
         }
+      else
+	ill_op ();
     }
 }
 
@@ -3675,15 +3701,24 @@ md_assemble (char *str)
 }
 
 static int
+signed_overflow (signed long value, unsigned bitsize)
+{
+  signed long max = (signed long) ((1UL << (bitsize - 1)) - 1);
+  return value < -max - 1 || value > max;
+}
+
+static int
+unsigned_overflow (unsigned long value, unsigned bitsize)
+{
+  return value >> (bitsize - 1) >> 1 != 0;
+}
+
+static int
 is_overflow (long value, unsigned bitsize)
 {
-  long fieldmask = (2UL << (bitsize - 1)) - 1;
-  long signmask = ~fieldmask;
-  long a = value & fieldmask;
-  long ss = a & signmask;
-  if (ss != 0 && ss != (signmask & fieldmask))
-    return 1;
-  return 0;
+  if (value < 0)
+    return signed_overflow (value, bitsize);
+  return unsigned_overflow ((unsigned long)value, bitsize);
 }
 
 void
@@ -3724,7 +3759,7 @@ md_apply_fix (fixS * fixP, valueT* valP, segT seg)
     {
     case BFD_RELOC_8_PCREL:
     case BFD_RELOC_Z80_DISP8:
-      if (fixP->fx_done && (val < -0x80 || val > 0x7f))
+      if (fixP->fx_done && signed_overflow (val, 8))
 	as_bad_where (fixP->fx_file, fixP->fx_line,
 		      _("8-bit signed offset out of range (%+ld)"), val);
       *p_lit++ = val;
@@ -3867,10 +3902,10 @@ z80_tc_label_is_local (const char *name)
 #define EXP_MIN -0x10000
 #define EXP_MAX 0x10000
 static int
-str_to_broken_float (bfd_boolean *signP, bfd_uint64_t *mantissaP, int *expP)
+str_to_broken_float (bool *signP, bfd_uint64_t *mantissaP, int *expP)
 {
   char *p;
-  bfd_boolean sign;
+  bool sign;
   bfd_uint64_t mantissa = 0;
   int exponent = 0;
   int i;
@@ -3987,7 +4022,7 @@ static const char *
 str_to_zeda32(char *litP, int *sizeP)
 {
   bfd_uint64_t mantissa;
-  bfd_boolean sign;
+  bool sign;
   int exponent;
   unsigned i;
 
@@ -4046,7 +4081,7 @@ static const char *
 str_to_float48(char *litP, int *sizeP)
 {
   bfd_uint64_t mantissa;
-  bfd_boolean sign;
+  bool sign;
   int exponent;
   unsigned i;
 
@@ -4083,19 +4118,19 @@ str_to_float48(char *litP, int *sizeP)
 static const char *
 str_to_ieee754_h(char *litP, int *sizeP)
 {
-  return ieee_md_atof ('h', litP, sizeP, FALSE);
+  return ieee_md_atof ('h', litP, sizeP, false);
 }
 
 static const char *
 str_to_ieee754_s(char *litP, int *sizeP)
 {
-  return ieee_md_atof ('s', litP, sizeP, FALSE);
+  return ieee_md_atof ('s', litP, sizeP, false);
 }
 
 static const char *
 str_to_ieee754_d(char *litP, int *sizeP)
 {
-  return ieee_md_atof ('d', litP, sizeP, FALSE);
+  return ieee_md_atof ('d', litP, sizeP, false);
 }
 
 #ifdef TARGET_USE_CFIPOP

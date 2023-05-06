@@ -213,8 +213,10 @@ m68k_register_to_value (struct frame_info *frame, int regnum,
 
   /* Convert to TYPE.  */
   if (!get_frame_register_bytes (frame, regnum, 0,
-				 register_size (gdbarch, regnum),
-				 from, optimizedp, unavailablep))
+				 gdb::make_array_view (from,
+						       register_size (gdbarch,
+								      regnum)),
+				 optimizedp, unavailablep))
     return 0;
 
   target_float_convert (from, fpreg_type, to, type);
@@ -1001,6 +1003,7 @@ m68k_frame_prev_register (struct frame_info *this_frame, void **this_cache,
 
 static const struct frame_unwind m68k_frame_unwind =
 {
+  "m68k prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   m68k_frame_this_id,

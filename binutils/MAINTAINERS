@@ -42,7 +42,6 @@ repository without obtaining approval first:
   DJ Delorie <dj@redhat.com>
   Alan Modra <amodra@gmail.com>
   Michael Meissner <gnu@the-meissners.org>
-  Daniel Jacobowitz <drow@false.org>
   Richard Sandiford <rdsandiford@googlemail.com>
 
       --------- Maintainers ---------
@@ -58,7 +57,6 @@ maintainers for a given domain then responsibility falls to the first
 maintainer.  The first maintainer is free to devolve that
 responsibility among the other maintainers.
 
-  ALPHA            Richard Henderson <rth@twiddle.net>
   AARCH64	   Richard Earnshaw <rearnsha@arm.com>
   AARCH64	   Marcus Shawcroft <marcus.shawcroft@arm.com>
   ARC		   Claudiu Zissulescu <claziss@synopsys.com>
@@ -70,7 +68,6 @@ responsibility among the other maintainers.
   BFIN		   Jie Zhang <jzhang918@gmail.com>
   BFIN		   Mike Frysinger <vapier@gentoo.org>
   BPF		   Jose E. Marchesi <jose.marchesi@oracle.com>
-  BUILD SYSTEM	   Daniel Jacobowitz <drow@false.org>
   CR16		   M R Swami Reddy <MR.Swami.Reddy@nsc.com>
   CRIS		   Hans-Peter Nilsson <hp@axis.com>
   CRX		   M R Swami Reddy <MR.Swami.Reddy@nsc.com>
@@ -84,7 +81,7 @@ responsibility among the other maintainers.
   EPIPHANY	   Joern Rennecke <joern.rennecke@embecosm.com>
   FR30		   Nick Clifton <nickc@redhat.com>
   FRV		   Nick Clifton <nickc@redhat.com>
-  FRV		   Alexandre Oliva <aoliva@redhat.com>
+  FRV		   Alexandre Oliva <aoliva@sourceware.org>
   GOLD		   Ian Lance Taylor <iant@google.com>
   GOLD		   Cary Coutant <ccoutant@gmail.com>
   H8300		   Prafulla Thakare <prafulla.thakare@kpitcummins.com>
@@ -107,9 +104,9 @@ responsibility among the other maintainers.
   METAG            Markos Chandras <markos.chandras@imgtec.com>
   MICROBLAZE	   Michael Eager <eager@eagercon.com>
   MIPS		   Chenghua Xu <paul.hua.gm@gmail.com>
-  MIPS I-IV	   Maciej W. Rozycki <macro@linux-mips.org>
+  MIPS I-IV	   Maciej W. Rozycki <macro@orcam.me.uk>
   MMIX		   Hans-Peter Nilsson <hp@bitrange.com>
-  MN10300	   Alexandre Oliva <aoliva@redhat.com>
+  MN10300	   Alexandre Oliva <aoliva@sourceware.org>
   Moxie		   Anthony Green <green@moxielogic.com>
   MSP430	   Dmitry Diky <diwil@spec.ru>
   NDS32		   Kuan-Lin Chen <kuanlinchentw@gmail.com>
@@ -131,9 +128,8 @@ responsibility among the other maintainers.
   RISC-V	   Nelson Chu <nelson.chu@sifive.com>
   RX               Nick Clifton <nickc@redhat.com>
   S12Z		   John Darrington <john@darrington.wattle.id.au>
-  s390, s390x	   Martin Schwidefsky <schwidefsky@de.ibm.com>
-  s390, s390x	   Andreas Krebbel <krebbel@linux.vnet.ibm.com>
-  SH		   Alexandre Oliva <aoliva@redhat.com>
+  s390, s390x	   Andreas Krebbel <krebbel@linux.ibm.com>
+  SH		   Alexandre Oliva <aoliva@sourceware.org>
   SPARC		   David S. Miller <davem@davemloft.net>
   SPARC		   Jose E. Marchesi <jose.marchesi@oracle.com>
   SPU		   Alan Modra <amodra@gmail.com>
@@ -169,6 +165,7 @@ goes with them.
   Mark Mitchell
   Bernd Schmidt
   Svein Seldal
+  Martin Schwidefsky
 
       --------- CGEN Maintainers -------------
 

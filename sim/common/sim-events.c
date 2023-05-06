@@ -23,22 +23,16 @@
 #ifndef _SIM_EVENTS_C_
 #define _SIM_EVENTS_C_
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
 #include "sim-assert.h"
+#include "sim-cpu.h"
 #include "libiberty.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
 #include <signal.h> /* For SIGPROCMASK et al. */
 
 typedef enum {
@@ -75,6 +69,9 @@ typedef enum {
   watch_sim_le_2,
   watch_sim_le_4,
   watch_sim_le_8,
+
+  /* pc */
+  watch_pc,
 
   /* wallclock */
   watch_clock,
@@ -475,10 +472,7 @@ sim_events_schedule (SIM_DESC sd,
 		     sim_event_handler *handler,
 		     void *data)
 {
-  va_list dummy;
-  memset (&dummy, 0, sizeof dummy);
-  return sim_events_schedule_vtracef (sd, delta_time, handler, data,
-				      NULL, dummy);
+  return sim_events_schedule_tracef (sd, delta_time, handler, data, NULL);
 }
 #endif
 
@@ -620,10 +614,49 @@ sim_events_watch_clock (SIM_DESC sd,
 
 #if EXTERN_SIM_EVENTS_P
 sim_event *
+sim_events_watch_pc (SIM_DESC sd,
+                      int is_within,
+                      unsigned64 lb,
+                      unsigned64 ub,
+                      sim_event_handler *handler,
+                      void *data)
+{
+  sim_events *events = STATE_EVENTS (sd);
+  sim_event *new_event = sim_events_zalloc (sd);
+  /* type */
+  new_event->watching = watch_pc;
+  /* handler */
+  new_event->data = data;
+  new_event->handler = handler;
+  /* data */
+  new_event->lb = lb;
+  new_event->lb64 = lb;
+  new_event->ub = ub;
+  new_event->ub64 = ub;
+  new_event->is_within = (is_within != 0);
+  /* insert */
+  new_event->next = events->watchpoints;
+  events->watchpoints = new_event;
+  events->work_pending = 1;
+  ETRACE ((_ETRACE,
+	   "event watching pc at %ld - tag 0x%lx - pc 0x%lx..0x%lx, handler 0x%lx, data 0x%lx\n",
+	   (long)sim_events_time (sd),
+	   (long)new_event,
+	   (long)new_event->lb,
+	   (long)new_event->ub,
+	   (long)new_event->handler,
+	   (long)new_event->data));
+  return new_event;
+}
+#endif
+
+
+#if EXTERN_SIM_EVENTS_P
+sim_event *
 sim_events_watch_sim (SIM_DESC sd,
 		      void *host_addr,
 		      int nr_bytes,
-		      int byte_order,
+		      enum bfd_endian byte_order,
 		      int is_within,
 		      unsigned64 lb,
 		      unsigned64 ub,
@@ -702,7 +735,7 @@ sim_events_watch_core (SIM_DESC sd,
 		       address_word core_addr,
 		       unsigned core_map,
 		       int nr_bytes,
-		       int byte_order,
+		       enum bfd_endian byte_order,
 		       int is_within,
 		       unsigned64 lb,
 		       unsigned64 ub,
@@ -974,6 +1007,21 @@ sim_watch_valid (SIM_DESC sd,
 	return ok;
       }
 #undef WATCH_SIM
+
+    case watch_pc:
+      {
+	int c;
+
+	for (c = 0; c < MAX_NR_PROCESSORS; ++c)
+	  {
+	    sim_cpu *cpu = STATE_CPU (sd, c);
+	    sim_cia cia = sim_pc_get (cpu);
+
+	    if (to_do->is_within == (cia >= to_do->lb64 && cia <= to_do->ub64))
+	      return 1;
+	  }
+	return 0;
+      }
 
     case watch_clock: /* wallclock */
       {

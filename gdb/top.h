@@ -173,6 +173,8 @@ public:
     current_ui = ui_list;
   }
 
+  DISABLE_COPY_AND_ASSIGN (switch_thru_all_uis);
+
   /* If done iterating, return true; otherwise return false.  */
   bool done () const
   {
@@ -189,11 +191,6 @@ public:
   }
 
  private:
-
-  /* No need for these.  They are intentionally not defined
-     anywhere.  */
-  switch_thru_all_uis &operator= (const switch_thru_all_uis &);
-  switch_thru_all_uis (const switch_thru_all_uis &);
 
   /* Used to iterate through the UIs.  */
   struct ui *m_iter;
@@ -273,12 +270,8 @@ extern void set_prompt (const char *s);
 
 extern int gdb_in_secondary_prompt_p (struct ui *ui);
 
-/* From random places.  */
-extern int readnow_symbol_files;
-extern int readnever_symbol_files;
-
 /* Perform _initialize initialization.  */
-extern void gdb_init (char *);
+extern void gdb_init ();
 
 /* For use by event-top.c.  */
 /* Variables from top.c.  */
@@ -297,5 +290,10 @@ extern void set_verbose (const char *, int, struct cmd_list_element *);
 extern char *handle_line_of_input (struct buffer *cmd_line_buffer,
 				   const char *rl, int repeat,
 				   const char *annotation_suffix);
+
+/* Call at startup to see if the user has requested that gdb start up
+   quietly.  */
+
+extern bool check_quiet_mode ();
 
 #endif

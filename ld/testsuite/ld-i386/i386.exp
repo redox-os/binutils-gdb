@@ -245,11 +245,16 @@ set i386tests {
      "-melf_i386 -shared -Bsymbolic -z notext" ""
      "--32 -mx86-used-note=yes"
      { pr19827a.S }  {{readelf {-rW} pr19827.rd}} "pr19827.so"}
-    {"Build pr27193.so"
+    {"Build pr27193a.so"
      "-melf_i386 -shared" ""
      "--32"
      { pr27193a.o.bz2 pr27193b.s }
-     {{objdump {-dw} pr27193.dd}} "pr27193.so"}
+     {{objdump {-dw} pr27193.dd}} "pr27193a.so"}
+    {"Build pr27193b.so"
+     "-melf_i386 -shared --reduce-memory-overheads" ""
+     "--32"
+     { pr27193a.o.bz2 pr27193b.s }
+     {{objdump {-dw} pr27193.dd}} "pr27193b.so"}
 }
 
 proc iamcu_tests {} {
@@ -292,6 +297,7 @@ run_dump_test "abs"
 run_dump_test "pcrel8"
 run_dump_test "pcrel16"
 run_dump_test "pcrel16abs"
+run_dump_test "pcrel16-2"
 run_dump_test "alloc"
 run_dump_test "warn1"
 run_dump_test "tlsgd2"
@@ -486,6 +492,7 @@ run_dump_test "property-x86-isa2"
 run_dump_test "property-x86-isa3"
 run_dump_test "property-x86-isa4"
 run_dump_test "pr26869"
+run_dump_test "code16"
 
 if { !([istarget "i?86-*-linux*"]
        || [istarget "i?86-*-gnu*"]
@@ -511,6 +518,9 @@ run_dump_test "pr18815"
 run_dump_test "pr19939a"
 run_dump_test "pr19939b"
 run_dump_test "tlsdesc2"
+run_dump_test "report-reloc-1"
+run_dump_test "pr27998a"
+run_dump_test "pr27998b"
 
 proc undefined_weak {cflags ldflags} {
     set testname "Undefined weak symbol"
@@ -1104,69 +1114,6 @@ if { [isnative]
 	    "-Wa,-mx86-used-note=yes" \
 	    {pass.c property-stack.S} \
 	    "property-3-static" "pass.out" \
-	] \
-	[list \
-	    "Run property 3" \
-	    "" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S} \
-	    "property-3" "pass.out" \
-	] \
-	[list \
-	    "Run property 3 (PIE)" \
-	    "-pie" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-1.S property-stack.S} \
-	    "property-3-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 3 (static)" \
-	    "-static" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-1.S pass.c property-stack.S} \
-	    "property-3-static" "pass.out" \
-	] \
-	[list \
-	    "Run property 4" \
-	    "" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S property-x86-2.S} \
-	    "property-4" "pass.out" \
-	] \
-	[list \
-	    "Run property 4 (PIE)" \
-	    "-pie" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-2.S property-x86-1.S property-stack.S} \
-	    "property-4-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 4 (static)" \
-	    "-static" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-2.S property-x86-1.S pass.c property-stack.S} \
-	    "property-4-static" "pass.out" \
-	] \
-	[list \
-	    "Run property 5" \
-	    "-Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-stack.S property-x86-1.S property-x86-2.S} \
-	    "property-5" "pass.out" \
-	] \
-	[list \
-	    "Run property 5 (PIE)" \
-	    "-pie -Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {pass.c property-x86-2.S property-x86-1.S property-stack.S} \
-	    "property-5-pie" "pass.out" "-fPIE" \
-	] \
-	[list \
-	    "Run property 5 (static)" \
-	    "-static -Wl,-z,stack-size=0x900000" \
-	    "-Wa,-mx86-used-note=yes" \
-	    {property-x86-2.S property-x86-1.S pass.c property-stack.S} \
-	    "property-5-static" "pass.out" \
 	] \
     ]
 

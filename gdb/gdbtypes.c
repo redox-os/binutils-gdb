@@ -183,8 +183,7 @@ alloc_type (struct objfile *objfile)
 					  struct main_type);
   OBJSTAT (objfile, n_types++);
 
-  TYPE_OBJFILE_OWNED (type) = 1;
-  TYPE_OWNER (type).objfile = objfile;
+  type->set_owner (objfile);
 
   /* Initialize the fields that might not be zero.  */
 
@@ -210,8 +209,7 @@ alloc_type_arch (struct gdbarch *gdbarch)
   type = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct type);
   TYPE_MAIN_TYPE (type) = GDBARCH_OBSTACK_ZALLOC (gdbarch, struct main_type);
 
-  TYPE_OBJFILE_OWNED (type) = 0;
-  TYPE_OWNER (type).gdbarch = gdbarch;
+  type->set_owner (gdbarch);
 
   /* Initialize the fields that might not be zero.  */
 
@@ -228,30 +226,29 @@ alloc_type_arch (struct gdbarch *gdbarch)
 struct type *
 alloc_type_copy (const struct type *type)
 {
-  if (TYPE_OBJFILE_OWNED (type))
-    return alloc_type (TYPE_OWNER (type).objfile);
+  if (type->is_objfile_owned ())
+    return alloc_type (type->objfile_owner ());
   else
-    return alloc_type_arch (TYPE_OWNER (type).gdbarch);
+    return alloc_type_arch (type->arch_owner ());
 }
 
-/* If TYPE is gdbarch-associated, return that architecture.
-   If TYPE is objfile-associated, return that objfile's architecture.  */
+/* See gdbtypes.h.  */
 
-struct gdbarch *
-get_type_arch (const struct type *type)
+gdbarch *
+type::arch () const
 {
   struct gdbarch *arch;
 
-  if (TYPE_OBJFILE_OWNED (type))
-    arch = TYPE_OWNER (type).objfile->arch ();
+  if (this->is_objfile_owned ())
+    arch = this->objfile_owner ()->arch ();
   else
-    arch = TYPE_OWNER (type).gdbarch;
+    arch = this->arch_owner ();
 
   /* The ARCH can be NULL if TYPE is associated with neither an objfile nor
      a gdbarch, however, this is very rare, and even then, in most cases
-     that get_type_arch is called, we assume that a non-NULL value is
+     that type::arch is called, we assume that a non-NULL value is
      returned.  */
-  gdb_assert (arch != NULL);
+  gdb_assert (arch != nullptr);
   return arch;
 }
 
@@ -275,8 +272,7 @@ get_target_type (struct type *type)
 unsigned int
 type_length_units (struct type *type)
 {
-  struct gdbarch *arch = get_type_arch (type);
-  int unit_size = gdbarch_addressable_memory_unit_size (arch);
+  int unit_size = gdbarch_addressable_memory_unit_size (type->arch ());
 
   return TYPE_LENGTH (type) / unit_size;
 }
@@ -292,10 +288,10 @@ alloc_type_instance (struct type *oldtype)
 
   /* Allocate the structure.  */
 
-  if (! TYPE_OBJFILE_OWNED (oldtype))
-    type = GDBARCH_OBSTACK_ZALLOC (get_type_arch (oldtype), struct type);
+  if (!oldtype->is_objfile_owned ())
+    type = GDBARCH_OBSTACK_ZALLOC (oldtype->arch_owner (), struct type);
   else
-    type = OBSTACK_ZALLOC (&TYPE_OBJFILE (oldtype)->objfile_obstack,
+    type = OBSTACK_ZALLOC (&oldtype->objfile_owner ()->objfile_obstack,
 			   struct type);
 
   TYPE_MAIN_TYPE (type) = TYPE_MAIN_TYPE (oldtype);
@@ -311,14 +307,17 @@ alloc_type_instance (struct type *oldtype)
 static void
 smash_type (struct type *type)
 {
-  int objfile_owned = TYPE_OBJFILE_OWNED (type);
-  union type_owner owner = TYPE_OWNER (type);
+  bool objfile_owned = type->is_objfile_owned ();
+  objfile *objfile = type->objfile_owner ();
+  gdbarch *arch = type->arch_owner ();
 
   memset (TYPE_MAIN_TYPE (type), 0, sizeof (struct main_type));
 
   /* Restore owner information.  */
-  TYPE_OBJFILE_OWNED (type) = objfile_owned;
-  TYPE_OWNER (type) = owner;
+  if (objfile_owned)
+    type->set_owner (objfile);
+  else
+    type->set_owner (arch);
 
   /* For now, delete the rings.  */
   TYPE_CHAIN (type) = type;
@@ -370,8 +369,7 @@ make_pointer_type (struct type *type, struct type **typeptr)
 
   /* FIXME!  Assumes the machine has only one representation for pointers!  */
 
-  TYPE_LENGTH (ntype)
-    = gdbarch_ptr_bit (get_type_arch (type)) / TARGET_CHAR_BIT;
+  TYPE_LENGTH (ntype) = gdbarch_ptr_bit (type->arch ()) / TARGET_CHAR_BIT;
   ntype->set_code (TYPE_CODE_PTR);
 
   /* Mark pointers as unsigned.  The target converts between pointers
@@ -454,8 +452,7 @@ make_reference_type (struct type *type, struct type **typeptr,
      references, and that it matches the (only) representation for
      pointers!  */
 
-  TYPE_LENGTH (ntype) =
-    gdbarch_ptr_bit (get_type_arch (type)) / TARGET_CHAR_BIT;
+  TYPE_LENGTH (ntype) = gdbarch_ptr_bit (type->arch ()) / TARGET_CHAR_BIT;
   ntype->set_code (refcode);
 
   *reftype = ntype;
@@ -647,7 +644,7 @@ make_qualified_type (struct type *type, type_instance_flags new_flags,
 	 as TYPE.  Otherwise, we can't link it into TYPE's cv chain:
 	 if one objfile is freed and the other kept, we'd have
 	 dangling pointers.  */
-      gdb_assert (TYPE_OBJFILE (type) == TYPE_OBJFILE (storage));
+      gdb_assert (type->objfile_owner () == storage->objfile_owner ());
 
       ntype = storage;
       TYPE_MAIN_TYPE (ntype) = TYPE_MAIN_TYPE (type);
@@ -737,7 +734,7 @@ make_cv_type (int cnst, int voltl,
 	 can't have inter-objfile pointers.  The only thing to do is
 	 to leave stub types as stub types, and look them up afresh by
 	 name each time you encounter them.  */
-      gdb_assert (TYPE_OBJFILE (*typeptr) == TYPE_OBJFILE (type));
+      gdb_assert ((*typeptr)->objfile_owner () == type->objfile_owner ());
     }
   
   ntype = make_qualified_type (type, new_flags, 
@@ -803,7 +800,7 @@ replace_type (struct type *ntype, struct type *type)
      the assignment of one type's main type structure to the other
      will produce a type with references to objects (names; field
      lists; etc.) allocated on an objfile other than its own.  */
-  gdb_assert (TYPE_OBJFILE (ntype) == TYPE_OBJFILE (type));
+  gdb_assert (ntype->objfile_owner () == type->objfile_owner ());
 
   *TYPE_MAIN_TYPE (ntype) = *TYPE_MAIN_TYPE (type);
 
@@ -1428,10 +1425,11 @@ lookup_array_range_type (struct type *element_type,
   struct type *index_type;
   struct type *range_type;
 
-  if (TYPE_OBJFILE_OWNED (element_type))
-    index_type = objfile_type (TYPE_OWNER (element_type).objfile)->builtin_int;
+  if (element_type->is_objfile_owned ())
+    index_type = objfile_type (element_type->objfile_owner ())->builtin_int;
   else
-    index_type = builtin_type (get_type_arch (element_type))->builtin_int;
+    index_type = builtin_type (element_type->arch_owner ())->builtin_int;
+
   range_type = create_static_range_type (NULL, index_type,
 					 low_bound, high_bound);
 
@@ -1615,8 +1613,7 @@ smash_to_memberptr_type (struct type *type, struct type *self_type,
   set_type_self_type (type, self_type);
   /* Assume that a data member pointer is the same size as a normal
      pointer.  */
-  TYPE_LENGTH (type)
-    = gdbarch_ptr_bit (get_type_arch (to_type)) / TARGET_CHAR_BIT;
+  TYPE_LENGTH (type) = gdbarch_ptr_bit (to_type->arch ()) / TARGET_CHAR_BIT;
 }
 
 /* Smash TYPE to be a type of pointer to methods type TO_TYPE.
@@ -1679,7 +1676,7 @@ type_name_or_error (struct type *type)
     return name;
 
   name = saved_type->name ();
-  objfile = TYPE_OBJFILE (saved_type);
+  objfile = saved_type->objfile_owner ();
   error (_("Invalid anonymous type %s [in module %s], GCC PR debug/47510 bug?"),
 	 name ? name : "<anonymous>",
 	 objfile ? objfile_name (objfile) : "<arch>");
@@ -2025,7 +2022,7 @@ get_vptr_fieldno (struct type *type, struct type **basetypep)
 	    {
 	      /* If the type comes from a different objfile we can't cache
 		 it, it may have a different lifetime.  PR 2384 */
-	      if (TYPE_OBJFILE (type) == TYPE_OBJFILE (basetype))
+	      if (type->objfile_owner () == basetype->objfile_owner ())
 		{
 		  set_type_vptr_fieldno (type, fieldno);
 		  set_type_vptr_basetype (type, basetype);
@@ -2226,7 +2223,7 @@ resolve_dynamic_range (struct type *dyn_range_type,
 	 I really don't think this is going to work with current GDB, the
 	 array indexing code in GDB seems to be pretty heavily tied to byte
 	 offsets right now.  Assuming 8 bits in a byte.  */
-      struct gdbarch *gdbarch = get_type_arch (dyn_range_type);
+      struct gdbarch *gdbarch = dyn_range_type->arch ();
       int unit_size = gdbarch_addressable_memory_unit_size (gdbarch);
       if (!byte_stride_p && (value % (unit_size * 8)) != 0)
 	error (_("bit strides that are not a multiple of the byte size "
@@ -2548,7 +2545,6 @@ resolve_dynamic_struct (struct type *type,
   unsigned resolved_type_bit_length = 0;
 
   gdb_assert (type->code () == TYPE_CODE_STRUCT);
-  gdb_assert (type->num_fields () > 0);
 
   resolved_type = copy_type (type);
 
@@ -2567,9 +2563,10 @@ resolve_dynamic_struct (struct type *type,
 	((struct field *)
 	 TYPE_ALLOC (resolved_type,
 		     resolved_type->num_fields () * sizeof (struct field)));
-      memcpy (resolved_type->fields (),
-	      type->fields (),
-	      resolved_type->num_fields () * sizeof (struct field));
+      if (type->num_fields () > 0)
+	memcpy (resolved_type->fields (),
+		type->fields (),
+		resolved_type->num_fields () * sizeof (struct field));
     }
 
   for (i = 0; i < resolved_type->num_fields (); ++i)
@@ -2796,9 +2793,9 @@ type::add_dyn_prop (dynamic_prop_node_kind prop_kind, dynamic_prop prop)
 {
   struct dynamic_prop_list *temp;
 
-  gdb_assert (TYPE_OBJFILE_OWNED (this));
+  gdb_assert (this->is_objfile_owned ());
 
-  temp = XOBNEW (&TYPE_OBJFILE (this)->objfile_obstack,
+  temp = XOBNEW (&this->objfile_owner ()->objfile_obstack,
 		 struct dynamic_prop_list);
   temp->prop_kind = prop_kind;
   temp->prop = prop;
@@ -2901,7 +2898,7 @@ check_typedef (struct type *type)
 	  if (sym)
 	    TYPE_TARGET_TYPE (type) = SYMBOL_TYPE (sym);
 	  else					/* TYPE_CODE_UNDEF */
-	    TYPE_TARGET_TYPE (type) = alloc_type_arch (get_type_arch (type));
+	    TYPE_TARGET_TYPE (type) = alloc_type_arch (type->arch ());
 	}
       type = TYPE_TARGET_TYPE (type);
 
@@ -2967,7 +2964,7 @@ check_typedef (struct type *type)
 	     TYPE's objfile is pointless, too, since you'll have to
 	     move over any other types NEWTYPE refers to, which could
 	     be an unbounded amount of stuff.  */
-	  if (TYPE_OBJFILE (newtype) == TYPE_OBJFILE (type))
+	  if (newtype->objfile_owner () == type->objfile_owner ())
 	    type = make_qualified_type (newtype, type->instance_flags (), type);
 	  else
 	    type = newtype;
@@ -2993,7 +2990,7 @@ check_typedef (struct type *type)
 	  /* Same as above for opaque types, we can replace the stub
 	     with the complete type only if they are in the same
 	     objfile.  */
-	  if (TYPE_OBJFILE (SYMBOL_TYPE (sym)) == TYPE_OBJFILE (type))
+	  if (SYMBOL_TYPE (sym)->objfile_owner () == type->objfile_owner ())
 	    type = make_qualified_type (SYMBOL_TYPE (sym),
 					type->instance_flags (), type);
 	  else
@@ -3069,7 +3066,7 @@ safe_parse_type (struct gdbarch *gdbarch, const char *p, int length)
 static void
 check_stub_method (struct type *type, int method_id, int signature_id)
 {
-  struct gdbarch *gdbarch = get_type_arch (type);
+  struct gdbarch *gdbarch = type->arch ();
   struct fn_field *f;
   char *mangled_name = gdb_mangle_name (type, method_id, signature_id);
   char *demangled_name = gdb_demangle (mangled_name,
@@ -3416,6 +3413,15 @@ init_decfloat_type (struct objfile *objfile, int bit, const char *name)
   return t;
 }
 
+/* Return true if init_complex_type can be called with TARGET_TYPE.  */
+
+bool
+can_create_complex_type (struct type *target_type)
+{
+  return (target_type->code () == TYPE_CODE_INT
+	  || target_type->code () == TYPE_CODE_FLT);
+}
+
 /* Allocate a TYPE_CODE_COMPLEX type structure.  NAME is the type
    name.  TARGET_TYPE is the component type.  */
 
@@ -3424,8 +3430,7 @@ init_complex_type (const char *name, struct type *target_type)
 {
   struct type *t;
 
-  gdb_assert (target_type->code () == TYPE_CODE_INT
-	      || target_type->code () == TYPE_CODE_FLT);
+  gdb_assert (can_create_complex_type (target_type));
 
   if (TYPE_MAIN_TYPE (target_type)->flds_bnds.complex_type == nullptr)
     {
@@ -3508,8 +3513,7 @@ type_align (struct type *type)
     return raw_align;
 
   /* Allow the architecture to provide an alignment.  */
-  struct gdbarch *arch = get_type_arch (type);
-  ULONGEST align = gdbarch_type_align (arch, type);
+  ULONGEST align = gdbarch_type_align (type->arch (), type);
   if (align != 0)
     return align;
 
@@ -3876,7 +3880,7 @@ is_unique_ancestor (struct type *base, struct value *val)
 enum bfd_endian
 type_byte_order (const struct type *type)
 {
-  bfd_endian byteorder = gdbarch_byte_order (get_type_arch (type));
+  bfd_endian byteorder = gdbarch_byte_order (type->arch ());
   if (type->endianity_is_not_default ())
     {
       if (byteorder == BFD_ENDIAN_BIG)
@@ -4071,6 +4075,10 @@ types_equal (struct type *a, struct type *b)
   if (b->code () == TYPE_CODE_TYPEDEF)
     b = check_typedef (b);
 
+  /* Check if identical after resolving typedefs.  */
+  if (a == b)
+    return true;
+
   /* If after resolving typedefs a and b are not of the same type
      code then they are not equal.  */
   if (a->code () != b->code ())
@@ -4091,10 +4099,6 @@ types_equal (struct type *a, struct type *b)
 
   if (a->name () && b->name ()
       && strcmp (a->name (), b->name ()) == 0)
-    return true;
-
-  /* Check if identical after resolving typedefs.  */
-  if (a == b)
     return true;
 
   /* Two function types are equal if their argument and return types
@@ -4503,7 +4507,7 @@ rank_one_type_parm_int (struct type *parm, struct type *arg, struct value *value
     case TYPE_CODE_CHAR:
     case TYPE_CODE_RANGE:
     case TYPE_CODE_BOOL:
-      if (TYPE_DECLARED_CLASS (arg))
+      if (arg->is_declared_class ())
 	return INCOMPATIBLE_TYPE_BADNESS;
       return INTEGER_PROMOTION_BADNESS;
     case TYPE_CODE_FLT:
@@ -4527,7 +4531,7 @@ rank_one_type_parm_enum (struct type *parm, struct type *arg, struct value *valu
     case TYPE_CODE_RANGE:
     case TYPE_CODE_BOOL:
     case TYPE_CODE_ENUM:
-      if (TYPE_DECLARED_CLASS (parm) || TYPE_DECLARED_CLASS (arg))
+      if (parm->is_declared_class () || arg->is_declared_class ())
 	return INCOMPATIBLE_TYPE_BADNESS;
       return INTEGER_CONVERSION_BADNESS;
     case TYPE_CODE_FLT:
@@ -4547,7 +4551,7 @@ rank_one_type_parm_char (struct type *parm, struct type *arg, struct value *valu
     case TYPE_CODE_RANGE:
     case TYPE_CODE_BOOL:
     case TYPE_CODE_ENUM:
-      if (TYPE_DECLARED_CLASS (arg))
+      if (arg->is_declared_class ())
 	return INCOMPATIBLE_TYPE_BADNESS;
       return INTEGER_CONVERSION_BADNESS;
     case TYPE_CODE_FLT:
@@ -4788,11 +4792,13 @@ rank_one_type (struct type *parm, struct type *arg, struct value *value)
     return (sum_ranks (rank_one_type (TYPE_TARGET_TYPE (parm), arg, NULL),
 		       REFERENCE_SEE_THROUGH_BADNESS));
   if (overload_debug)
-  /* Debugging only.  */
-    fprintf_filtered (gdb_stderr,
-		      "------ Arg is %s [%d], parm is %s [%d]\n",
-		      arg->name (), arg->code (),
-		      parm->name (), parm->code ());
+    {
+      /* Debugging only.  */
+      fprintf_filtered (gdb_stderr,
+			"------ Arg is %s [%d], parm is %s [%d]\n",
+			arg->name (), arg->code (),
+			parm->name (), parm->code ());
+    }
 
   /* x -> y means arg of type x being supplied for parameter of type y.  */
 
@@ -5187,15 +5193,15 @@ recursive_dump_type (struct type *type, int spaces)
   puts_filtered ("\n");
   printf_filtered ("%*slength %s\n", spaces, "",
 		   pulongest (TYPE_LENGTH (type)));
-  if (TYPE_OBJFILE_OWNED (type))
+  if (type->is_objfile_owned ())
     {
       printf_filtered ("%*sobjfile ", spaces, "");
-      gdb_print_host_address (TYPE_OWNER (type).objfile, gdb_stdout);
+      gdb_print_host_address (type->objfile_owner (), gdb_stdout);
     }
   else
     {
       printf_filtered ("%*sgdbarch ", spaces, "");
-      gdb_print_host_address (TYPE_OWNER (type).gdbarch, gdb_stdout);
+      gdb_print_host_address (type->arch_owner (), gdb_stdout);
     }
   printf_filtered ("\n");
   printf_filtered ("%*starget_type ", spaces, "");
@@ -5490,12 +5496,12 @@ copy_type_recursive (struct objfile *objfile,
   void **slot;
   struct type *new_type;
 
-  if (! TYPE_OBJFILE_OWNED (type))
+  if (!type->is_objfile_owned ())
     return type;
 
   /* This type shouldn't be pointing to any types in other objfiles;
      if it did, the type might disappear unexpectedly.  */
-  gdb_assert (TYPE_OBJFILE (type) == objfile);
+  gdb_assert (type->objfile_owner () == objfile);
 
   struct type_pair pair (type, nullptr);
 
@@ -5503,7 +5509,7 @@ copy_type_recursive (struct objfile *objfile,
   if (*slot != NULL)
     return ((struct type_pair *) *slot)->newobj;
 
-  new_type = alloc_type_arch (get_type_arch (type));
+  new_type = alloc_type_arch (type->arch ());
 
   /* We must add the new type to the hash table immediately, in case
      we encounter this type again during a recursive call below.  */
@@ -5515,8 +5521,8 @@ copy_type_recursive (struct objfile *objfile,
   /* Copy the common fields of types.  For the main type, we simply
      copy the entire thing and then update specific fields as needed.  */
   *TYPE_MAIN_TYPE (new_type) = *TYPE_MAIN_TYPE (type);
-  TYPE_OBJFILE_OWNED (new_type) = 0;
-  TYPE_OWNER (new_type).gdbarch = get_type_arch (type);
+
+  new_type->set_owner (type->arch ());
 
   if (type->name ())
     new_type->set_name (xstrdup (type->name ()));
@@ -5656,7 +5662,7 @@ copy_type (const struct type *type)
 {
   struct type *new_type;
 
-  gdb_assert (TYPE_OBJFILE_OWNED (type));
+  gdb_assert (type->is_objfile_owned ());
 
   new_type = alloc_type_copy (type);
   new_type->set_instance_flags (type->instance_flags ());
@@ -5665,7 +5671,7 @@ copy_type (const struct type *type)
 	  sizeof (struct main_type));
   if (type->main_type->dyn_prop_list != NULL)
     new_type->main_type->dyn_prop_list
-      = copy_dynamic_prop_list (&TYPE_OBJFILE (type) -> objfile_obstack,
+      = copy_dynamic_prop_list (&type->objfile_owner ()->objfile_obstack,
 				type->main_type->dyn_prop_list);
 
   return new_type;
@@ -5842,10 +5848,8 @@ append_flags_type_field (struct type *type, int start_bitpos, int nr_bits,
 void
 append_flags_type_flag (struct type *type, int bitpos, const char *name)
 {
-  struct gdbarch *gdbarch = get_type_arch (type);
-
   append_flags_type_field (type, bitpos, 1,
-			   builtin_type (gdbarch)->builtin_bool,
+			   builtin_type (type->arch ())->builtin_bool,
 			   name);
 }
 
@@ -5958,12 +5962,12 @@ allocate_fixed_point_type_info (struct type *type)
   std::unique_ptr<fixed_point_type_info> up (new fixed_point_type_info);
   fixed_point_type_info *info;
 
-  if (TYPE_OBJFILE_OWNED (type))
+  if (type->is_objfile_owned ())
     {
       fixed_point_type_storage *storage
-	= fixed_point_objfile_key.get (TYPE_OBJFILE (type));
+	= fixed_point_objfile_key.get (type->objfile_owner ());
       if (storage == nullptr)
-	storage = fixed_point_objfile_key.emplace (TYPE_OBJFILE (type));
+	storage = fixed_point_objfile_key.emplace (type->objfile_owner ());
       info = up.get ();
       storage->push_back (std::move (up));
     }

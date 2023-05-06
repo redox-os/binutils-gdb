@@ -54,6 +54,7 @@ enum option_values
   OPTION_OFORMAT,
   OPTION_RELAX,
   OPTION_NO_RELAX,
+  OPTION_NO_SYMBOLIC,
   OPTION_RETAIN_SYMBOLS_FILE,
   OPTION_RPATH,
   OPTION_RPATH_LINK,
@@ -132,6 +133,7 @@ enum option_values
   OPTION_ACCEPT_UNKNOWN_INPUT_ARCH,
   OPTION_NO_ACCEPT_UNKNOWN_INPUT_ARCH,
   OPTION_PIE,
+  OPTION_NO_PIE,
   OPTION_UNRESOLVED_SYMBOLS,
   OPTION_WARN_UNRESOLVED_SYMBOLS,
   OPTION_ERROR_UNRESOLVED_SYMBOLS,
@@ -187,10 +189,10 @@ extern void ldlex_inputlist (void);
 extern void ldlex_mri_script (void);
 extern void ldlex_version_script (void);
 extern void ldlex_version_file (void);
-extern void ldlex_defsym (void);
 extern void ldlex_expression (void);
 extern void ldlex_both (void);
 extern void ldlex_popstate (void);
+extern void ldlex_backup (void);
 extern const char* ldlex_filename (void);
 
 /* In lexsup.c.  */

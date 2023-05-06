@@ -26,15 +26,15 @@ SIM_OBJS = \
 	endian.o
 SIM_EXTRA_CLEAN = clean-extra
 
-INCLUDE = d10v_sim.h $(srcroot)/include/gdb/callback.h targ-vals.h endian.c \
+SIM_EXTRA_DEPS = simops.h
+
+INCLUDE = d10v_sim.h $(srcroot)/include/sim/callback.h targ-vals.h endian.c \
 	$(srcroot)/include/gdb/sim-d10v.h
 
 # This selects the d10v newlib/libgloss syscall definitions.
 NL_TARGET = -DNL_TARGET_d10v
 
 ## COMMON_POST_CONFIG_FRAG
-
-simops.o: simops.h
 
 simops.h: gencode
 	./gencode -h >$@
@@ -43,13 +43,13 @@ table.c: gencode simops.h
 	./gencode >$@
 
 gencode.o: gencode.c $(INCLUDE)
-	$(CC_FOR_BUILD) $(BUILD_CFLAGS) $(WARN_CFLAGS) -c $(srcdir)/gencode.c
+	$(COMPILE_FOR_BUILD) $(WARN_CFLAGS) -c $(srcdir)/gencode.c
 
 d10v-opc.o: $(srcdir)/../../opcodes/d10v-opc.c
-	$(CC_FOR_BUILD) $(BUILD_CFLAGS) $(WARN_CFLAGS) -c $(srcdir)/../../opcodes/d10v-opc.c
+	$(COMPILE_FOR_BUILD) $(WARN_CFLAGS) -c $(srcdir)/../../opcodes/d10v-opc.c
 
 gencode: gencode.o d10v-opc.o
-	$(CC_FOR_BUILD) $(BUILD_CFLAGS) $(BUILD_LDFLAGS) -o gencode gencode.o d10v-opc.o $(BUILD_LIB)
+	$(LINK_FOR_BUILD) gencode.o d10v-opc.o
 
 clean-extra:
 	rm -f table.c simops.h gencode

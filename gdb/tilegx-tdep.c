@@ -429,7 +429,7 @@ tilegx_analyze_prologue (struct gdbarch* gdbarch,
 	  instbuf_start = next_addr;
 
 	  status = safe_frame_unwind_memory (next_frame, instbuf_start,
-					     instbuf, instbuf_size);
+					     {instbuf, instbuf_size});
 	  if (status == 0)
 	    memory_error (TARGET_XFER_E_IO, next_addr);
 	}
@@ -459,12 +459,6 @@ tilegx_analyze_prologue (struct gdbarch* gdbarch,
 		  unsigned saved_register
 		    = (unsigned) reverse_frame[operands[1]].value;
 
-		  /* realreg >= 0 and addr != -1 indicates that the
-		     value of saved_register is in memory location
-		     saved_address.  The value of realreg is not
-		     meaningful in this case but it must be >= 0.
-		     See trad-frame.h.  */
-		  cache->saved_regs[saved_register].set_realreg (saved_register);
 		  cache->saved_regs[saved_register].set_addr (saved_address);
 		} 
 	      else if (cache
@@ -494,8 +488,7 @@ tilegx_analyze_prologue (struct gdbarch* gdbarch,
 		  new_reverse_frame[i].state = REVERSE_STATE_VALUE;
 		  new_reverse_frame[i].value
 		    = cache->saved_regs[hopefully_sp].addr ();
-		  trad_frame_set_value (cache->saved_regs,
-					hopefully_sp, prev_sp_value);
+		  cache->saved_regs[hopefully_sp].set_value (prev_sp_value);
 		}
 	      else
 		{
@@ -718,15 +711,14 @@ tilegx_analyze_prologue (struct gdbarch* gdbarch,
 	      unsigned saved_register = (unsigned) reverse_frame[i].value;
 
 	      cache->saved_regs[saved_register].set_realreg (i);
-	      cache->saved_regs[saved_register].set_addr ((LONGEST) -1);
 	    }
 	}
     }
 
   if (lr_saved_on_stack_p)
     {
-      cache->saved_regs[TILEGX_LR_REGNUM].set_realreg (TILEGX_LR_REGNUM);
-      cache->saved_regs[TILEGX_LR_REGNUM].set_addr (cache->saved_regs[TILEGX_SP_REGNUM].addr ());
+      CORE_ADDR addr = cache->saved_regs[TILEGX_SP_REGNUM].addr ();
+      cache->saved_regs[TILEGX_LR_REGNUM].set_addr (addr);
     }
 
   return prolog_end;
@@ -755,7 +747,7 @@ tilegx_skip_prologue (struct gdbarch *gdbarch, CORE_ADDR start_pc)
   s = find_pc_section (start_pc);
   end_pc = start_pc + 8 * TILEGX_BUNDLE_SIZE_IN_BYTES;
   if (s != NULL)
-    end_pc = std::min (end_pc, obj_section_endaddr (s));
+    end_pc = std::min (end_pc, s->endaddr ());
 
   /* Otherwise, try to skip prologue the hard way.  */
   return tilegx_analyze_prologue (gdbarch,
@@ -862,7 +854,7 @@ tilegx_frame_cache (struct frame_info *this_frame, void **this_cache)
   current_pc = get_frame_pc (this_frame);
 
   cache->base = get_frame_register_unsigned (this_frame, TILEGX_SP_REGNUM);
-  trad_frame_set_value (cache->saved_regs, TILEGX_SP_REGNUM, cache->base);
+  cache->saved_regs[TILEGX_SP_REGNUM].set_value (cache->base);
 
   if (cache->start_pc)
     tilegx_analyze_prologue (gdbarch, cache->start_pc, current_pc,
@@ -913,6 +905,7 @@ tilegx_frame_base_address (struct frame_info *this_frame, void **this_cache)
 }
 
 static const struct frame_unwind tilegx_frame_unwind = {
+  "tilegx prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   tilegx_frame_this_id,

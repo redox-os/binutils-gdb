@@ -31,6 +31,11 @@
 #include "arc-tdep.h"
 #include "arch/arc.h"
 
+/* Print an "arc-linux" debug statement.  */
+
+#define arc_linux_debug_printf(fmt, ...) \
+  debug_prefixed_printf_cond (arc_debug, "arc-linux", fmt, ##__VA_ARGS__)
+
 #define REGOFF(offset) (offset * ARC_REGISTER_SIZE)
 
 /* arc_linux_sc_reg_offsets[i] is the offset of register i in the `struct
@@ -158,11 +163,7 @@ arc_linux_is_sigtramp (struct frame_info *this_frame)
   struct gdbarch *gdbarch = get_frame_arch (this_frame);
   CORE_ADDR pc = get_frame_pc (this_frame);
 
-  if (arc_debug)
-    {
-      debug_printf ("arc-linux: arc_linux_is_sigtramp, pc=%s\n",
-		    paddress(gdbarch, pc));
-    }
+  arc_linux_debug_printf ("pc=%s", paddress(gdbarch, pc));
 
   static const gdb_byte insns_be_hs[] = {
     0x20, 0x8a, 0x12, 0xc2,	/* mov  r8,nr_rt_sigreturn */
@@ -203,7 +204,7 @@ arc_linux_is_sigtramp (struct frame_info *this_frame)
 
   /* Read the memory at the PC.  Since we are stopped, any breakpoint must
      have been removed.  */
-  if (!safe_frame_unwind_memory (this_frame, pc, buf, insns_sz))
+  if (!safe_frame_unwind_memory (this_frame, pc, {buf, insns_sz}))
     {
       /* Failed to unwind frame.  */
       return FALSE;
@@ -214,7 +215,7 @@ arc_linux_is_sigtramp (struct frame_info *this_frame)
     return TRUE;
 
   /* No - look one instruction earlier in the code...  */
-  if (!safe_frame_unwind_memory (this_frame, pc - 4, buf, insns_sz))
+  if (!safe_frame_unwind_memory (this_frame, pc - 4, {buf, insns_sz}))
     {
       /* Failed to unwind frame.  */
       return FALSE;
@@ -331,6 +332,78 @@ arc_linux_sw_breakpoint_from_kind (struct gdbarch *gdbarch,
 	  : arc_linux_trap_s_le);
 }
 
+/* Check for an atomic sequence of instructions beginning with an
+   LLOCK instruction and ending with a SCOND instruction.
+
+   These patterns are hand coded in libc's (glibc and uclibc). Take
+   a look at [1] for instance:
+
+   main+14: llock   r2,[r0]
+   main+18: brne.nt r2,0,main+30
+   main+22: scond   r3,[r0]
+   main+26: bne     main+14
+   main+30: mov_s   r0,0
+
+   If such a sequence is found, attempt to step over it.
+   A breakpoint is placed at the end of the sequence.
+
+   This function expects the INSN to be a "llock(d)" instruction.
+
+   [1]
+   https://cgit.uclibc-ng.org/cgi/cgit/uclibc-ng.git/tree/libc/ \
+     sysdeps/linux/arc/bits/atomic.h#n46
+   */
+
+static std::vector<CORE_ADDR>
+handle_atomic_sequence (arc_instruction insn, disassemble_info &di)
+{
+  const int atomic_seq_len = 24;    /* Instruction sequence length.  */
+  std::vector<CORE_ADDR> next_pcs;
+
+  /* Sanity check.  */
+  gdb_assert (insn.insn_class == LLOCK);
+
+  /* Data size we are dealing with: LLOCK vs. LLOCKD  */
+  arc_ldst_data_size llock_data_size_mode = insn.data_size_mode;
+  /* Indicator if any conditional branch is found in the sequence.  */
+  bool found_bc = false;
+  /* Becomes true if "LLOCK(D) .. SCOND(D)" sequence is found.  */
+  bool is_pattern_valid = false;
+
+  for (int insn_count = 0; insn_count < atomic_seq_len; ++insn_count)
+    {
+      arc_insn_decode (arc_insn_get_linear_next_pc (insn),
+		       &di, arc_delayed_print_insn, &insn);
+
+      if (insn.insn_class == BRCC)
+        {
+          /* If more than one conditional branch is found, this is not
+             the pattern we are interested in.  */
+          if (found_bc)
+	    break;
+	  found_bc = true;
+	  continue;
+        }
+
+      /* This is almost a happy ending.  */
+      if (insn.insn_class == SCOND)
+        {
+	  /* SCOND should match the LLOCK's data size.  */
+	  if (insn.data_size_mode == llock_data_size_mode)
+	    is_pattern_valid = true;
+	  break;
+        }
+    }
+
+  if (is_pattern_valid)
+    {
+      /* Get next instruction after scond(d).  There is no limm.  */
+      next_pcs.push_back (insn.address + insn.length);
+    }
+
+  return next_pcs;
+}
+
 /* Implement the "software_single_step" gdbarch method.  */
 
 static std::vector<CORE_ADDR>
@@ -344,8 +417,11 @@ arc_linux_software_single_step (struct regcache *regcache)
   struct arc_instruction curr_insn;
   arc_insn_decode (regcache_read_pc (regcache), &di, arc_delayed_print_insn,
 		   &curr_insn);
-  CORE_ADDR next_pc = arc_insn_get_linear_next_pc (curr_insn);
 
+  if (curr_insn.insn_class == LLOCK)
+    return handle_atomic_sequence (curr_insn, di);
+
+  CORE_ADDR next_pc = arc_insn_get_linear_next_pc (curr_insn);
   std::vector<CORE_ADDR> next_pcs;
 
   /* For instructions with delay slots, the fall thru is not the
@@ -383,15 +459,12 @@ arc_linux_software_single_step (struct regcache *regcache)
 	  regcache_cooked_read_unsigned (regcache, ARC_LP_COUNT_REGNUM,
 					 &lp_count);
 
-	  if (arc_debug)
-	    {
-	      debug_printf ("arc-linux: lp_start = %s, lp_end = %s, "
-			    "lp_count = %s, next_pc = %s\n",
-			    paddress (gdbarch, lp_start),
-			    paddress (gdbarch, lp_end),
-			    pulongest (lp_count),
-			    paddress (gdbarch, next_pc));
-	    }
+	  arc_linux_debug_printf ("lp_start = %s, lp_end = %s, "
+				  "lp_count = %s, next_pc = %s",
+				  paddress (gdbarch, lp_start),
+				  paddress (gdbarch, lp_end),
+				  pulongest (lp_count),
+				  paddress (gdbarch, next_pc));
 
 	  if (next_pc == lp_end && lp_count > 1)
 	    {
@@ -436,17 +509,13 @@ arc_linux_skip_solib_resolver (struct gdbarch *gdbarch, CORE_ADDR pc)
       if (resolver.minsym != nullptr)
 	{
 	  CORE_ADDR res_addr = BMSYMBOL_VALUE_ADDRESS (resolver);
-	  debug_printf ("arc-linux: skip_solib_resolver (): "
-			"pc = %s, resolver at %s\n",
-			print_core_address (gdbarch, pc),
-			print_core_address (gdbarch, res_addr));
+	  arc_linux_debug_printf ("pc = %s, resolver at %s",
+				  print_core_address (gdbarch, pc),
+				  print_core_address (gdbarch, res_addr));
 	}
       else
-	{
-	  debug_printf ("arc-linux: skip_solib_resolver (): "
-			"pc = %s, no resolver found\n",
-			print_core_address (gdbarch, pc));
-	}
+	arc_linux_debug_printf ("pc = %s, no resolver found",
+				print_core_address (gdbarch, pc));
     }
 
   if (resolver.minsym != nullptr && BMSYMBOL_VALUE_ADDRESS (resolver) == pc)
@@ -625,8 +694,7 @@ arc_linux_init_osabi (struct gdbarch_info info, struct gdbarch *gdbarch)
 {
   struct gdbarch_tdep *tdep = gdbarch_tdep (gdbarch);
 
-  if (arc_debug)
-    debug_printf ("arc-linux: GNU/Linux OS/ABI initialization.\n");
+  arc_linux_debug_printf ("GNU/Linux OS/ABI initialization.");
 
   /* Fill in target-dependent info in ARC-private structure.  */
   tdep->is_sigtramp = arc_linux_is_sigtramp;

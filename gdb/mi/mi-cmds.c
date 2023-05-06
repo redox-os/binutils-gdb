@@ -45,8 +45,8 @@ static struct mi_cmd mi_cmds[] =
   DEF_MI_CMD_MI ("add-inferior", mi_cmd_add_inferior),
   DEF_MI_CMD_CLI_1 ("break-after", "ignore", 1,
 		    &mi_suppress_notification.breakpoint),
-  DEF_MI_CMD_CLI_1 ("break-condition","cond", 1,
-		  &mi_suppress_notification.breakpoint),
+  DEF_MI_CMD_MI_1 ("break-condition", mi_cmd_break_condition,
+		   &mi_suppress_notification.breakpoint),
   DEF_MI_CMD_MI_1 ("break-commands", mi_cmd_break_commands,
 		   &mi_suppress_notification.breakpoint),
   DEF_MI_CMD_CLI_1 ("break-delete", "delete breakpoint", 1,
@@ -220,13 +220,12 @@ mi_lookup (const char *command)
 
 /* Used for collecting hash hit/miss statistics.  */
 
-struct mi_cmd_stats
+static struct
 {
   int hit;
   int miss;
   int rehash;
-};
-struct mi_cmd_stats stats;
+} stats;
 
 /* Look up a command.  */
 

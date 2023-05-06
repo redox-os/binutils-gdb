@@ -53,7 +53,7 @@ extern int riscv_relax_frag (asection *, struct frag *, long);
 #define md_undefined_symbol(name)	(0)
 #define md_operand(x)
 
-extern bfd_boolean riscv_frag_align_code (int);
+extern bool riscv_frag_align_code (int);
 #define md_do_align(N, FILL, LEN, MAX, LABEL)				\
   if ((N) != 0 && !(FILL) && !need_pass_2 && subseg_text_p (now_seg))	\
     {									\
@@ -67,16 +67,16 @@ extern void riscv_handle_align (fragS *);
 #define MAX_MEM_FOR_RS_ALIGN_CODE (3 + 4)
 
 /* The ISA of the target may change based on command-line arguments.  */
-#define TARGET_FORMAT riscv_target_format()
+#define TARGET_FORMAT riscv_target_format ()
 extern const char * riscv_target_format (void);
 
-#define md_after_parse_args() riscv_after_parse_args()
+#define md_after_parse_args() riscv_after_parse_args ()
 extern void riscv_after_parse_args (void);
 
 #define md_parse_long_option(arg) riscv_parse_long_option (arg)
 extern int riscv_parse_long_option (const char *);
 
-#define md_pre_output_hook riscv_pre_output_hook()
+#define md_pre_output_hook riscv_pre_output_hook ()
 extern void riscv_pre_output_hook (void);
 
 /* Let the linker resolve all the relocs due to relaxation.  */

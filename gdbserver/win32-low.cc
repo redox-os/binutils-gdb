@@ -62,14 +62,6 @@ using namespace windows_nat;
 #define COUNTOF(STR) (sizeof (STR) / sizeof ((STR)[0]))
 #endif
 
-#ifdef _WIN32_WCE
-# define GETPROCADDRESS(DLL, PROC) \
-  ((winapi_ ## PROC) GetProcAddress (DLL, TEXT (#PROC)))
-#else
-# define GETPROCADDRESS(DLL, PROC) \
-  ((winapi_ ## PROC) GetProcAddress (DLL, #PROC))
-#endif
-
 int using_threads = 1;
 
 /* Globals.  */
@@ -98,23 +90,6 @@ const struct target_desc *wow64_win32_tdesc;
 
 #define NUM_REGS (the_low_target.num_regs ())
 
-typedef BOOL (WINAPI *winapi_DebugActiveProcessStop) (DWORD dwProcessId);
-typedef BOOL (WINAPI *winapi_DebugSetProcessKillOnExit) (BOOL KillOnExit);
-typedef BOOL (WINAPI *winapi_DebugBreakProcess) (HANDLE);
-typedef BOOL (WINAPI *winapi_GenerateConsoleCtrlEvent) (DWORD, DWORD);
-
-#ifdef __x86_64__
-typedef BOOL (WINAPI *winapi_Wow64SetThreadContext) (HANDLE,
-						     const WOW64_CONTEXT *);
-
-winapi_Wow64GetThreadContext win32_Wow64GetThreadContext;
-static winapi_Wow64SetThreadContext win32_Wow64SetThreadContext;
-#endif
-
-#ifndef _WIN32_WCE
-static void win32_add_all_dlls (void);
-#endif
-
 /* Get the thread ID from the current selected inferior (the current
    thread).  */
 static ptid_t
@@ -142,9 +117,6 @@ win32_get_thread_context (windows_thread_info *th)
 #endif
     memset (&th->context, 0, sizeof (CONTEXT));
   (*the_low_target.get_thread_context) (th);
-#ifdef _WIN32_WCE
-  memcpy (&th->base_context, &th->context, sizeof (CONTEXT));
-#endif
 }
 
 /* Set the thread context of the thread associated with TH.  */
@@ -152,27 +124,12 @@ win32_get_thread_context (windows_thread_info *th)
 static void
 win32_set_thread_context (windows_thread_info *th)
 {
-#ifdef _WIN32_WCE
-  /* Calling SuspendThread on a thread that is running kernel code
-     will report that the suspending was successful, but in fact, that
-     will often not be true.  In those cases, the context returned by
-     GetThreadContext will not be correct by the time the thread
-     stops, hence we can't set that context back into the thread when
-     resuming - it will most likely crash the inferior.
-     Unfortunately, there is no way to know when the thread will
-     really stop.  To work around it, we'll only write the context
-     back to the thread when either the user or GDB explicitly change
-     it between stopping and resuming.  */
-  if (memcmp (&th->context, &th->base_context, sizeof (CONTEXT)) != 0)
-#endif
-    {
 #ifdef __x86_64__
-      if (wow64_process)
-	win32_Wow64SetThreadContext (th->h, &th->wow64_context);
-      else
+  if (wow64_process)
+    Wow64SetThreadContext (th->h, &th->wow64_context);
+  else
 #endif
-	SetThreadContext (th->h, &th->context);
-    }
+    SetThreadContext (th->h, &th->context);
 }
 
 /* Set the thread context of the thread associated with TH.  */
@@ -397,8 +354,8 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
   wow64_process = wow64;
 
   if (wow64_process
-      && (win32_Wow64GetThreadContext == nullptr
-	  || win32_Wow64SetThreadContext == nullptr))
+      && (Wow64GetThreadContext == nullptr
+	  || Wow64SetThreadContext == nullptr))
     error ("WOW64 debugging is not supported on this system.\n");
 
   ignore_first_breakpoint = !attached && wow64_process;
@@ -445,7 +402,6 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
       }
     }
 
-#ifndef _WIN32_WCE
   /* Now that the inferior has been started and all DLLs have been mapped,
      we can iterate over all DLLs and load them in.
 
@@ -461,8 +417,7 @@ do_initial_child_stuff (HANDLE proch, DWORD pid, int attached)
      Rather than try to work around this sort of issue, it is much
      simpler to just ignore DLL load/unload events during the startup
      phase, and then process them all in one batch now.  */
-  win32_add_all_dlls ();
-#endif
+  windows_add_all_dlls ();
 
   child_initialization_done = 1;
 }
@@ -611,46 +566,6 @@ create_process (const char *program, char *args,
   proglen = strlen (program) + 1;
   argslen = strlen (args) + proglen;
 
-#ifdef _WIN32_WCE
-  wchar_t *p, *wprogram, *wargs, *wcwd = NULL;
-
-  wprogram = (wchar_t *) alloca (proglen * sizeof (wchar_t));
-  mbstowcs (wprogram, program, proglen);
-
-  for (p = wprogram; *p; ++p)
-    if (L'/' == *p)
-      *p = L'\\';
-
-  wargs = alloca ((argslen + 1) * sizeof (wchar_t));
-  wcscpy (wargs, wprogram);
-  wcscat (wargs, L" ");
-  mbstowcs (wargs + proglen, args, argslen + 1 - proglen);
-
-  if (inferior_cwd != NULL)
-    {
-      std::string expanded_infcwd = gdb_tilde_expand (inferior_cwd);
-      std::replace (expanded_infcwd.begin (), expanded_infcwd.end (),
-		    '/', '\\');
-      wcwd = alloca ((expanded_infcwd.size () + 1) * sizeof (wchar_t));
-      if (mbstowcs (wcwd, expanded_infcwd.c_str (),
-		    expanded_infcwd.size () + 1) == NULL)
-	{
-	  error (_("\
-Could not convert the expanded inferior cwd to wide-char."));
-	}
-    }
-
-  ret = CreateProcessW (wprogram, /* image name */
-			wargs,    /* command line */
-			NULL,     /* security, not supported */
-			NULL,     /* thread, not supported */
-			FALSE,    /* inherit handles, not supported */
-			flags,    /* start flags */
-			NULL,     /* environment, not supported */
-			wcwd,     /* current directory */
-			NULL,     /* start info, not supported */
-			pi);      /* proc info */
-#else
   STARTUPINFOA si = { sizeof (STARTUPINFOA) };
   char *program_and_args = (char *) alloca (argslen + 1);
 
@@ -670,7 +585,6 @@ Could not convert the expanded inferior cwd to wide-char."));
 			 : gdb_tilde_expand (inferior_cwd).c_str()),
 			&si,               /* start info */
 			pi);               /* proc info */
-#endif
 
   return ret;
 }
@@ -751,12 +665,7 @@ win32_process_target::create_inferior (const char *program,
       OUTMSG2 (("Process created: %s %s\n", program, (char *) args));
     }
 
-#ifndef _WIN32_WCE
-  /* On Windows CE this handle can't be closed.  The OS reuses
-     it in the debug events, while the 9x/NT versions of Windows
-     probably use a DuplicateHandle'd one.  */
   CloseHandle (pi.hThread);
-#endif
 
   do_initial_child_stuff (pi.hProcess, pi.dwProcessId, 0);
 
@@ -777,22 +686,14 @@ int
 win32_process_target::attach (unsigned long pid)
 {
   HANDLE h;
-  winapi_DebugSetProcessKillOnExit DebugSetProcessKillOnExit = NULL;
   DWORD err;
-#ifdef _WIN32_WCE
-  HMODULE dll = GetModuleHandle (_T("COREDLL.DLL"));
-#else
-  HMODULE dll = GetModuleHandle (_T("KERNEL32.DLL"));
-#endif
-  DebugSetProcessKillOnExit = GETPROCADDRESS (dll, DebugSetProcessKillOnExit);
 
   h = OpenProcess (PROCESS_ALL_ACCESS, FALSE, pid);
   if (h != NULL)
     {
       if (DebugActiveProcess (pid))
 	{
-	  if (DebugSetProcessKillOnExit != NULL)
-	    DebugSetProcessKillOnExit (FALSE);
+	  DebugSetProcessKillOnExit (FALSE);
 
 	  /* win32_wait needs to know we're attaching.  */
 	  attaching = 1;
@@ -899,27 +800,11 @@ win32_process_target::kill (process_info *process)
 int
 win32_process_target::detach (process_info *process)
 {
-  winapi_DebugActiveProcessStop DebugActiveProcessStop = NULL;
-  winapi_DebugSetProcessKillOnExit DebugSetProcessKillOnExit = NULL;
-#ifdef _WIN32_WCE
-  HMODULE dll = GetModuleHandle (_T("COREDLL.DLL"));
-#else
-  HMODULE dll = GetModuleHandle (_T("KERNEL32.DLL"));
-#endif
-  DebugActiveProcessStop = GETPROCADDRESS (dll, DebugActiveProcessStop);
-  DebugSetProcessKillOnExit = GETPROCADDRESS (dll, DebugSetProcessKillOnExit);
-
-  if (DebugSetProcessKillOnExit == NULL
-      || DebugActiveProcessStop == NULL)
-    return -1;
-
-  {
-    struct thread_resume resume;
-    resume.thread = minus_one_ptid;
-    resume.kind = resume_continue;
-    resume.sig = 0;
-    this->resume (&resume, 1);
-  }
+  struct thread_resume resume;
+  resume.thread = minus_one_ptid;
+  resume.kind = resume_continue;
+  resume.sig = 0;
+  this->resume (&resume, 1);
 
   if (!DebugActiveProcessStop (current_process_id))
     return -1;
@@ -1050,21 +935,18 @@ win32_process_target::resume (thread_resume *resume_info, size_t n)
   child_continue (continue_status, tid);
 }
 
-static void
-win32_add_one_solib (const char *name, CORE_ADDR load_addr)
+/* See nat/windows-nat.h.  */
+
+void
+windows_nat::handle_load_dll (const char *name, LPVOID base)
 {
+  CORE_ADDR load_addr = (CORE_ADDR) (uintptr_t) base;
+
   char buf[MAX_PATH + 1];
   char buf2[MAX_PATH + 1];
 
-#ifdef _WIN32_WCE
-  WIN32_FIND_DATA w32_fd;
-  WCHAR wname[MAX_PATH + 1];
-  mbstowcs (wname, name, MAX_PATH);
-  HANDLE h = FindFirstFile (wname, &w32_fd);
-#else
   WIN32_FIND_DATAA w32_fd;
   HANDLE h = FindFirstFileA (name, &w32_fd);
-#endif
 
   /* The symbols in a dll are offset by 0x1000, which is the
      offset from 0 of the first byte in an image - because
@@ -1077,7 +959,6 @@ win32_add_one_solib (const char *name, CORE_ADDR load_addr)
     {
       FindClose (h);
       strcpy (buf, name);
-#ifndef _WIN32_WCE
       {
 	char cwd[MAX_PATH + 1];
 	char *p;
@@ -1091,16 +972,13 @@ win32_add_one_solib (const char *name, CORE_ADDR load_addr)
 	    SetCurrentDirectoryA (cwd);
 	  }
       }
-#endif
     }
 
-#ifndef _WIN32_WCE
   if (strcasecmp (buf, "ntdll.dll") == 0)
     {
       GetSystemDirectoryA (buf, sizeof (buf));
       strcat (buf, "\\ntdll.dll");
     }
-#endif
 
 #ifdef __CYGWIN__
   cygwin_conv_path (CCP_WIN_A_TO_POSIX, buf, buf2, sizeof (buf2));
@@ -1109,199 +987,6 @@ win32_add_one_solib (const char *name, CORE_ADDR load_addr)
 #endif
 
   loaded_dll (buf2, load_addr);
-}
-
-typedef BOOL (WINAPI *winapi_EnumProcessModules) (HANDLE, HMODULE *,
-						  DWORD, LPDWORD);
-#ifdef __x86_64__
-typedef BOOL (WINAPI *winapi_EnumProcessModulesEx) (HANDLE, HMODULE *, DWORD,
-						    LPDWORD, DWORD);
-#endif
-typedef BOOL (WINAPI *winapi_GetModuleInformation) (HANDLE, HMODULE,
-						    LPMODULEINFO, DWORD);
-typedef DWORD (WINAPI *winapi_GetModuleFileNameExA) (HANDLE, HMODULE,
-						     LPSTR, DWORD);
-
-static winapi_EnumProcessModules win32_EnumProcessModules;
-#ifdef __x86_64__
-static winapi_EnumProcessModulesEx win32_EnumProcessModulesEx;
-#endif
-static winapi_GetModuleInformation win32_GetModuleInformation;
-static winapi_GetModuleFileNameExA win32_GetModuleFileNameExA;
-
-static BOOL
-load_psapi (void)
-{
-  static int psapi_loaded = 0;
-  static HMODULE dll = NULL;
-
-  if (!psapi_loaded)
-    {
-      psapi_loaded = 1;
-      dll = LoadLibrary (TEXT("psapi.dll"));
-      if (!dll)
-	return FALSE;
-      win32_EnumProcessModules =
-	      GETPROCADDRESS (dll, EnumProcessModules);
-#ifdef __x86_64__
-      win32_EnumProcessModulesEx =
-	      GETPROCADDRESS (dll, EnumProcessModulesEx);
-#endif
-      win32_GetModuleInformation =
-	      GETPROCADDRESS (dll, GetModuleInformation);
-      win32_GetModuleFileNameExA =
-	      GETPROCADDRESS (dll, GetModuleFileNameExA);
-    }
-
-#ifdef __x86_64__
-  if (wow64_process && win32_EnumProcessModulesEx == nullptr)
-    return FALSE;
-#endif
-
-  return (win32_EnumProcessModules != NULL
-	  && win32_GetModuleInformation != NULL
-	  && win32_GetModuleFileNameExA != NULL);
-}
-
-#ifndef _WIN32_WCE
-
-/* Iterate over all DLLs currently mapped by our inferior, and
-   add them to our list of solibs.  */
-
-static void
-win32_add_all_dlls (void)
-{
-  size_t i;
-  HMODULE dh_buf[1];
-  HMODULE *DllHandle = dh_buf;
-  DWORD cbNeeded;
-  BOOL ok;
-
-  if (!load_psapi ())
-    return;
-
-  cbNeeded = 0;
-#ifdef __x86_64__
-  if (wow64_process)
-    ok = (*win32_EnumProcessModulesEx) (current_process_handle,
-					DllHandle,
-					sizeof (HMODULE),
-					&cbNeeded,
-					LIST_MODULES_32BIT);
-  else
-#endif
-    ok = (*win32_EnumProcessModules) (current_process_handle,
-				      DllHandle,
-				      sizeof (HMODULE),
-				      &cbNeeded);
-
-  if (!ok || !cbNeeded)
-    return;
-
-  DllHandle = (HMODULE *) alloca (cbNeeded);
-  if (!DllHandle)
-    return;
-
-#ifdef __x86_64__
-  if (wow64_process)
-    ok = (*win32_EnumProcessModulesEx) (current_process_handle,
-					DllHandle,
-					cbNeeded,
-					&cbNeeded,
-					LIST_MODULES_32BIT);
-  else
-#endif
-    ok = (*win32_EnumProcessModules) (current_process_handle,
-				      DllHandle,
-				      cbNeeded,
-				      &cbNeeded);
-  if (!ok)
-    return;
-
-  char system_dir[MAX_PATH];
-  char syswow_dir[MAX_PATH];
-  size_t system_dir_len = 0;
-  bool convert_syswow_dir = false;
-#ifdef __x86_64__
-  if (wow64_process)
-#endif
-    {
-      /* This fails on 32bit Windows because it has no SysWOW64 directory,
-	 and in this case a path conversion isn't necessary.  */
-      UINT len = GetSystemWow64DirectoryA (syswow_dir, sizeof (syswow_dir));
-      if (len > 0)
-	{
-	  /* Check that we have passed a large enough buffer.  */
-	  gdb_assert (len < sizeof (syswow_dir));
-
-	  len = GetSystemDirectoryA (system_dir, sizeof (system_dir));
-	  /* Error check.  */
-	  gdb_assert (len != 0);
-	  /* Check that we have passed a large enough buffer.  */
-	  gdb_assert (len < sizeof (system_dir));
-
-	  strcat (system_dir, "\\");
-	  strcat (syswow_dir, "\\");
-	  system_dir_len = strlen (system_dir);
-
-	  convert_syswow_dir = true;
-	}
-
-    }
-
-  for (i = 1; i < ((size_t) cbNeeded / sizeof (HMODULE)); i++)
-    {
-      MODULEINFO mi;
-      char dll_name[MAX_PATH];
-
-      if (!(*win32_GetModuleInformation) (current_process_handle,
-					  DllHandle[i],
-					  &mi,
-					  sizeof (mi)))
-	continue;
-      if ((*win32_GetModuleFileNameExA) (current_process_handle,
-					 DllHandle[i],
-					 dll_name,
-					 MAX_PATH) == 0)
-	continue;
-
-      const char *name = dll_name;
-      /* Convert the DLL path of 32bit processes returned by
-	 GetModuleFileNameEx from the 64bit system directory to the
-	 32bit syswow64 directory if necessary.  */
-      std::string syswow_dll_path;
-      if (convert_syswow_dir
-	  && strncasecmp (dll_name, system_dir, system_dir_len) == 0
-	  && strchr (dll_name + system_dir_len, '\\') == nullptr)
-	{
-	  syswow_dll_path = syswow_dir;
-	  syswow_dll_path += dll_name + system_dir_len;
-	  name = syswow_dll_path.c_str();
-	}
-
-      win32_add_one_solib (name, (CORE_ADDR) (uintptr_t) mi.lpBaseOfDll);
-    }
-}
-#endif
-
-typedef HANDLE (WINAPI *winapi_CreateToolhelp32Snapshot) (DWORD, DWORD);
-typedef BOOL (WINAPI *winapi_Module32First) (HANDLE, LPMODULEENTRY32);
-typedef BOOL (WINAPI *winapi_Module32Next) (HANDLE, LPMODULEENTRY32);
-
-/* See nat/windows-nat.h.  */
-
-void
-windows_nat::handle_load_dll ()
-{
-  LOAD_DLL_DEBUG_INFO *event = &current_event.u.LoadDll;
-  const char *dll_name;
-
-  dll_name = get_image_name (current_process_handle,
-			     event->lpImageName, event->fUnicode);
-  if (!dll_name)
-    return;
-
-  win32_add_one_solib (dll_name, (CORE_ADDR) (uintptr_t) event->lpBaseOfDll);
 }
 
 /* See nat/windows-nat.h.  */
@@ -1342,14 +1027,6 @@ fake_breakpoint_event (void)
 
   for_each_thread (suspend_one_thread);
 }
-
-#ifdef _WIN32_WCE
-static int
-auto_delete_breakpoint (CORE_ADDR stop_pc)
-{
-  return 1;
-}
-#endif
 
 /* See nat/windows-nat.h.  */
 
@@ -1536,7 +1213,7 @@ get_child_debug_event (DWORD *continue_status,
       CloseHandle (current_event.u.LoadDll.hFile);
       if (! child_initialization_done)
 	break;
-      handle_load_dll ();
+      dll_loaded_event ();
 
       ourstatus->kind = TARGET_WAITKIND_LOADED;
       ourstatus->value.sig = GDB_SIGNAL_TRAP;
@@ -1693,19 +1370,7 @@ win32_process_target::write_memory (CORE_ADDR memaddr,
 void
 win32_process_target::request_interrupt ()
 {
-  winapi_DebugBreakProcess DebugBreakProcess;
-  winapi_GenerateConsoleCtrlEvent GenerateConsoleCtrlEvent;
-
-#ifdef _WIN32_WCE
-  HMODULE dll = GetModuleHandle (_T("COREDLL.DLL"));
-#else
-  HMODULE dll = GetModuleHandle (_T("KERNEL32.DLL"));
-#endif
-
-  GenerateConsoleCtrlEvent = GETPROCADDRESS (dll, GenerateConsoleCtrlEvent);
-
-  if (GenerateConsoleCtrlEvent != NULL
-      && GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, current_process_id))
+  if (GenerateConsoleCtrlEvent (CTRL_BREAK_EVENT, current_process_id))
     return;
 
   /* GenerateConsoleCtrlEvent can fail if process id being debugged is
@@ -1713,10 +1378,7 @@ win32_process_target::request_interrupt ()
      Fallback to XP/Vista 'DebugBreakProcess', which generates a
      breakpoint exception in the interior process.  */
 
-  DebugBreakProcess = GETPROCADDRESS (dll, DebugBreakProcess);
-
-  if (DebugBreakProcess != NULL
-      && DebugBreakProcess (current_process_handle))
+  if (DebugBreakProcess (current_process_handle))
     return;
 
   /* Last resort, suspend all threads manually.  */
@@ -1728,65 +1390,6 @@ win32_process_target::supports_hardware_single_step ()
 {
   return true;
 }
-
-#ifdef _WIN32_WCE
-int
-win32_error_to_fileio_error (DWORD err)
-{
-  switch (err)
-    {
-    case ERROR_BAD_PATHNAME:
-    case ERROR_FILE_NOT_FOUND:
-    case ERROR_INVALID_NAME:
-    case ERROR_PATH_NOT_FOUND:
-      return FILEIO_ENOENT;
-    case ERROR_CRC:
-    case ERROR_IO_DEVICE:
-    case ERROR_OPEN_FAILED:
-      return FILEIO_EIO;
-    case ERROR_INVALID_HANDLE:
-      return FILEIO_EBADF;
-    case ERROR_ACCESS_DENIED:
-    case ERROR_SHARING_VIOLATION:
-      return FILEIO_EACCES;
-    case ERROR_NOACCESS:
-      return FILEIO_EFAULT;
-    case ERROR_BUSY:
-      return FILEIO_EBUSY;
-    case ERROR_ALREADY_EXISTS:
-    case ERROR_FILE_EXISTS:
-      return FILEIO_EEXIST;
-    case ERROR_BAD_DEVICE:
-      return FILEIO_ENODEV;
-    case ERROR_DIRECTORY:
-      return FILEIO_ENOTDIR;
-    case ERROR_FILENAME_EXCED_RANGE:
-    case ERROR_INVALID_DATA:
-    case ERROR_INVALID_PARAMETER:
-    case ERROR_NEGATIVE_SEEK:
-      return FILEIO_EINVAL;
-    case ERROR_TOO_MANY_OPEN_FILES:
-      return FILEIO_EMFILE;
-    case ERROR_HANDLE_DISK_FULL:
-    case ERROR_DISK_FULL:
-      return FILEIO_ENOSPC;
-    case ERROR_WRITE_PROTECT:
-      return FILEIO_EROFS;
-    case ERROR_NOT_SUPPORTED:
-      return FILEIO_ENOSYS;
-    }
-
-  return FILEIO_EUNKNOWN;
-}
-
-void
-win32_process_target::hostio_last_error (char *buf)
-{
-  DWORD winerr = GetLastError ();
-  int fileio_err = win32_error_to_fileio_error (winerr);
-  sprintf (buf, "F-1,%x", fileio_err);
-}
-#endif
 
 bool
 win32_process_target::supports_qxfer_siginfo ()
@@ -1906,11 +1509,5 @@ initialize_low (void)
   set_target_ops (&the_win32_target);
   the_low_target.arch_setup ();
 
-#ifdef __x86_64__
-  /* These functions are loaded dynamically, because they are not available
-     on Windows XP.  */
-  HMODULE dll = GetModuleHandle (_T("KERNEL32.DLL"));
-  win32_Wow64GetThreadContext = GETPROCADDRESS (dll, Wow64GetThreadContext);
-  win32_Wow64SetThreadContext = GETPROCADDRESS (dll, Wow64SetThreadContext);
-#endif
+  initialize_loadable ();
 }

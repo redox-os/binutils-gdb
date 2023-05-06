@@ -28,25 +28,14 @@
 #include "as.h"
 #include "safe-ctype.h"
 
-#ifdef HAVE_LIMITS_H
 #include <limits.h>
-#endif
 #ifndef CHAR_BIT
 #define CHAR_BIT 8
 #endif
 
-bfd_boolean literal_prefix_dollar_hex = FALSE;
+bool literal_prefix_dollar_hex = false;
 
-static void floating_constant (expressionS * expressionP);
-static valueT generic_bignum_to_int32 (void);
-#ifdef BFD64
-static valueT generic_bignum_to_int64 (void);
-#endif
-static void integer_constant (int radix, expressionS * expressionP);
-static void mri_char_constant (expressionS *);
 static void clean_up_expression (expressionS * expressionP);
-static segT operand (expressionS *, enum expr_mode);
-static operatorT operatorf (int *);
 
 /* We keep a mapping of expression symbols to file positions, so that
    we can provide better error messages.  */
@@ -138,6 +127,52 @@ expr_symbol_where (symbolS *sym, const char **pfile, unsigned int *pline)
 
   return 0;
 }
+
+/* Look up a previously used .startof. / .sizeof. symbol, or make a fresh
+   one.  */
+
+static symbolS *
+symbol_lookup_or_make (const char *name, bool start)
+{
+  static symbolS **seen[2];
+  static unsigned int nr_seen[2];
+  char *buf = concat (start ? ".startof." : ".sizeof.", name, NULL);
+  symbolS *symbolP;
+  unsigned int i;
+
+  for (i = 0; i < nr_seen[start]; ++i)
+    {
+    symbolP = seen[start][i];
+
+    if (! symbolP)
+      break;
+
+    name = S_GET_NAME (symbolP);
+    if ((symbols_case_sensitive
+	 ? strcasecmp (buf, name)
+	 : strcmp (buf, name)) == 0)
+      {
+	free (buf);
+	return symbolP;
+      }
+    }
+
+  symbolP = symbol_make (buf);
+  free (buf);
+
+  if (i >= nr_seen[start])
+    {
+      unsigned int nr = (i + 1) * 2;
+
+      seen[start] = XRESIZEVEC (symbolS *, seen[start], nr);
+      nr_seen[start] = nr;
+      memset (&seen[start][i + 1], 0, (nr - i - 1) * sizeof(seen[0][0]));
+    }
+
+  seen[start][i] = symbolP;
+
+  return symbolP;
+}
 
 /* Utilities for building expressions.
    Since complex expressions are recorded as symbols for use in other
@@ -220,31 +255,25 @@ floating_constant (expressionS *expressionP)
   expressionP->X_add_number = -1;
 }
 
-static valueT
+uint32_t
 generic_bignum_to_int32 (void)
 {
-  valueT number =
-    ((((valueT) generic_bignum[1] & LITTLENUM_MASK) << LITTLENUM_NUMBER_OF_BITS)
-     | ((valueT) generic_bignum[0] & LITTLENUM_MASK));
-  number &= 0xffffffff;
-  return number;
+  return ((((uint32_t) generic_bignum[1] & LITTLENUM_MASK)
+	   << LITTLENUM_NUMBER_OF_BITS)
+	  | ((uint32_t) generic_bignum[0] & LITTLENUM_MASK));
 }
 
-#ifdef BFD64
-static valueT
+uint64_t
 generic_bignum_to_int64 (void)
 {
-  valueT number =
-    ((((((((valueT) generic_bignum[3] & LITTLENUM_MASK)
-	  << LITTLENUM_NUMBER_OF_BITS)
-	 | ((valueT) generic_bignum[2] & LITTLENUM_MASK))
-	<< LITTLENUM_NUMBER_OF_BITS)
-       | ((valueT) generic_bignum[1] & LITTLENUM_MASK))
-      << LITTLENUM_NUMBER_OF_BITS)
-     | ((valueT) generic_bignum[0] & LITTLENUM_MASK));
-  return number;
+  return ((((((((uint64_t) generic_bignum[3] & LITTLENUM_MASK)
+	       << LITTLENUM_NUMBER_OF_BITS)
+	      | ((uint64_t) generic_bignum[2] & LITTLENUM_MASK))
+	     << LITTLENUM_NUMBER_OF_BITS)
+	    | ((uint64_t) generic_bignum[1] & LITTLENUM_MASK))
+	   << LITTLENUM_NUMBER_OF_BITS)
+	  | ((uint64_t) generic_bignum[0] & LITTLENUM_MASK));
 }
-#endif
 
 static void
 integer_constant (int radix, expressionS *expressionP)
@@ -1033,9 +1062,16 @@ operand (expressionS *expressionP, enum expr_mode mode)
 		  expressionP->X_extrabit ^= 1;
 	      }
 	    else if (c == '~' || c == '"')
-	      expressionP->X_add_number = ~ expressionP->X_add_number;
+	      {
+		expressionP->X_add_number = ~ expressionP->X_add_number;
+		expressionP->X_extrabit ^= 1;
+	      }
 	    else if (c == '!')
-	      expressionP->X_add_number = ! expressionP->X_add_number;
+	      {
+		expressionP->X_add_number = ! expressionP->X_add_number;
+		expressionP->X_unsigned = 1;
+		expressionP->X_extrabit = 0;
+	      }
 	  }
 	else if (expressionP->X_op == O_big
 		 && expressionP->X_add_number <= 0
@@ -1169,8 +1205,6 @@ operand (expressionS *expressionP, enum expr_mode mode)
 	    as_bad (_("syntax error in .startof. or .sizeof."));
 	  else
 	    {
-	      char *buf;
-
 	      ++input_line_pointer;
 	      SKIP_WHITESPACE ();
 	      c = get_symbol_name (& name);
@@ -1185,13 +1219,8 @@ operand (expressionS *expressionP, enum expr_mode mode)
 		  break;
 		}
 
-	      buf = concat (start ? ".startof." : ".sizeof.", name,
-			    (char *) NULL);
-	      symbolP = symbol_make (buf);
-	      free (buf);
-
 	      expressionP->X_op = O_symbol;
-	      expressionP->X_add_symbol = symbolP;
+	      expressionP->X_add_symbol = symbol_lookup_or_make (name, start);
 	      expressionP->X_add_number = 0;
 
 	      *input_line_pointer = c;
@@ -2366,7 +2395,7 @@ get_symbol_name (char ** ilp_return)
     }
   else if (c == '"')
     {
-      bfd_boolean backslash_seen;
+      bool backslash_seen;
 
       * ilp_return = input_line_pointer;
       do

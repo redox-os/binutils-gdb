@@ -20,6 +20,7 @@
 #include "defs.h"
 #include "producer.h"
 #include "gdbsupport/selftest.h"
+#include "gdb_regex.h"
 
 /* See producer.h.  */
 
@@ -72,56 +73,48 @@ producer_is_gcc (const char *producer, int *major, int *minor)
   return 0;
 }
 
+/* See producer.h.  */
+
+bool
+producer_is_icc_ge_19 (const char *producer)
+{
+  int major, minor;
+
+  if (! producer_is_icc (producer, &major, &minor))
+    return false;
+
+  return major >= 19;
+}
 
 /* See producer.h.  */
 
 bool
 producer_is_icc (const char *producer, int *major, int *minor)
 {
-  if (producer == NULL || !startswith (producer, "Intel(R)"))
+  compiled_regex i_re ("Intel(R)", 0, "producer_is_icc");
+  if (producer == nullptr || i_re.exec (producer, 0, nullptr, 0) != 0)
     return false;
 
   /* Prepare the used fields.  */
   int maj, min;
-  if (major == NULL)
+  if (major == nullptr)
     major = &maj;
-  if (minor == NULL)
+  if (minor == nullptr)
     minor = &min;
 
   *minor = 0;
   *major = 0;
 
-  /* Consumes the string till a "Version" is found.  */
-  const char *cs = strstr (producer, "Version");
-  if (cs != NULL)
+  compiled_regex re ("[0-9]+\\.[0-9]+", REG_EXTENDED, "producer_is_icc");
+  regmatch_t version[1];
+  if (re.exec (producer, ARRAY_SIZE (version), version, 0) == 0
+      && version[0].rm_so != -1)
     {
-      cs = skip_to_space (cs);
-
-      int intermediate = 0;
-      int nof = sscanf (cs, "%d.%d.%d.%*d", major, &intermediate, minor);
-
-      /* Internal versions are represented only as MAJOR.MINOR, where
-	 minor is usually 0.
-	 Public versions have 3 fields as described with the command
-	 above.  */
-      if (nof == 3)
-	return true;
-
-      if (nof == 2)
-	{
-	  *minor = intermediate;
-	  return true;
-	}
+      const char *version_str = producer + version[0].rm_so;
+      sscanf (version_str, "%d.%d", major, minor);
+      return true;
     }
 
-  static bool warning_printed = false;
-  /* Not recognized as Intel, let the user know.  */
-  if (!warning_printed)
-    {
-      warning (_("Could not recognize version of Intel Compiler in: \"%s\""),
-	       producer);
-      warning_printed = true;
-    }
   return false;
 }
 
@@ -152,15 +145,15 @@ producer_parsing_tests ()
   }
 
   {
-    static const char extern_f_14_1[] = "\
+    static const char extern_f_14_0[] = "\
 Intel(R) Fortran Intel(R) 64 Compiler XE for applications running on \
 Intel(R) 64, \
 Version 14.0.1.074 Build 20130716";
 
     int major = 0, minor = 0;
-    SELF_CHECK (producer_is_icc (extern_f_14_1, &major, &minor)
-		&& major == 14 && minor == 1);
-    SELF_CHECK (!producer_is_gcc (extern_f_14_1, &major, &minor));
+    SELF_CHECK (producer_is_icc (extern_f_14_0, &major, &minor)
+		&& major == 14 && minor == 0);
+    SELF_CHECK (!producer_is_gcc (extern_f_14_0, &major, &minor));
   }
 
   {

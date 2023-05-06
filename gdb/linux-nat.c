@@ -280,6 +280,8 @@ static int lwp_status_pending_p (struct lwp_info *lp);
 
 static void save_stop_reason (struct lwp_info *lp);
 
+static void maybe_close_proc_mem_file (pid_t pid);
+
 
 /* LWP accessors.  */
 
@@ -446,7 +448,7 @@ typedef std::unique_ptr<struct lwp_info, lwp_deleter> lwp_info_up;
    ptid of the followed inferior.  At return, inferior_ptid will be
    unchanged.  */
 
-bool
+void
 linux_nat_target::follow_fork (bool follow_child, bool detach_fork)
 {
   if (!follow_child)
@@ -611,8 +613,6 @@ linux_nat_target::follow_fork (bool follow_child, bool detach_fork)
       /* Let the thread_db layer learn about this new process.  */
       check_for_thread_db ();
     }
-
-  return false;
 }
 
 
@@ -757,7 +757,7 @@ static sigset_t suspend_mask;
 static sigset_t blocked_mask;
 
 /* SIGCHLD action.  */
-struct sigaction sigchld_action;
+static struct sigaction sigchld_action;
 
 /* Block child signals (SIGCHLD and linux threads signals), and store
    the previous mask in PREV_MASK.  */
@@ -1063,7 +1063,7 @@ linux_nat_post_attach_wait (ptid_t ptid, int *signalled)
     {
       /* The pid we tried to attach has apparently just exited.  */
       linux_nat_debug_printf ("Failed to stop %d: %s", pid,
-			      status_to_str (status));
+			      status_to_str (status).c_str ());
       return status;
     }
 
@@ -1071,7 +1071,7 @@ linux_nat_post_attach_wait (ptid_t ptid, int *signalled)
     {
       *signalled = 1;
       linux_nat_debug_printf ("Received %s after attaching",
-			      status_to_str (status));
+			      status_to_str (status).c_str ());
     }
 
   return status;
@@ -1241,7 +1241,8 @@ linux_nat_target::attach (const char *args, int from_tty)
   /* Save the wait status to report later.  */
   lp->resumed = 1;
   linux_nat_debug_printf ("waitpid %ld, saving status %s",
-			  (long) lp->ptid.pid (), status_to_str (status));
+			  (long) lp->ptid.pid (),
+			  status_to_str (status).c_str ());
 
   lp->status = status;
 
@@ -1456,6 +1457,11 @@ linux_nat_target::detach (inferior *inf, int from_tty)
      they're no longer running.  */
   iterate_over_lwps (ptid_t (pid), stop_wait_callback);
 
+  /* We can now safely remove breakpoints.  We don't this in earlier
+     in common code because this target doesn't currently support
+     writing memory while the inferior is running.  */
+  remove_breakpoints_inf (current_inferior ());
+
   iterate_over_lwps (ptid_t (pid), detach_callback);
 
   /* Only the initial process should be left right now.  */
@@ -1482,6 +1488,8 @@ linux_nat_target::detach (inferior *inf, int from_tty)
 
       detach_success (inf);
     }
+
+  maybe_close_proc_mem_file (pid);
 }
 
 /* Resume execution of the inferior process.  If STEP is nonzero,
@@ -2002,7 +2010,7 @@ linux_handle_extended_wait (struct lwp_info *lp, int status)
 	      /* Save the wait status to report later.  */
 	      linux_nat_debug_printf
 		("waitpid of new LWP %ld, saving status %s",
-		 (long) new_lp->ptid.lwp (), status_to_str (status));
+		 (long) new_lp->ptid.lwp (), status_to_str (status).c_str ());
 	      new_lp->status = status;
 	    }
 	  else if (report_thread_events)
@@ -2020,6 +2028,10 @@ linux_handle_extended_wait (struct lwp_info *lp, int status)
   if (event == PTRACE_EVENT_EXEC)
     {
       linux_nat_debug_printf ("Got exec event from LWP %ld", lp->ptid.lwp ());
+
+      /* Close the /proc/<pid>/mem file if it was open for this
+	 inferior.  */
+      maybe_close_proc_mem_file (lp->ptid.pid ());
 
       ourstatus->kind = TARGET_WAITKIND_EXECD;
       ourstatus->value.execd_pathname
@@ -2150,7 +2162,7 @@ wait_lwp (struct lwp_info *lp)
 
       linux_nat_debug_printf ("waitpid %s received %s",
 			      target_pid_to_str (lp->ptid).c_str (),
-			      status_to_str (status));
+			      status_to_str (status).c_str ());
 
       /* Check if the thread has exited.  */
       if (WIFEXITED (status) || WIFSIGNALED (status))
@@ -2437,7 +2449,7 @@ stop_wait_callback (struct lwp_info *lp)
 	  /* The thread was stopped with a signal other than SIGSTOP.  */
 
 	  linux_nat_debug_printf ("Pending event %s in %s",
-				  status_to_str ((int) status),
+				  status_to_str ((int) status).c_str (),
 				  target_pid_to_str (lp->ptid).c_str ());
 
 	  /* Save the sigtrap event.  */
@@ -2817,9 +2829,10 @@ resumed_callback (struct lwp_info *lp)
 }
 
 /* Check if we should go on and pass this event to common code.
-   Return the affected lwp if we should, or NULL otherwise.  */
 
-static struct lwp_info *
+   If so, save the status to the lwp_info structure associated to LWPID.  */
+
+static void
 linux_nat_filter_event (int lwpid, int status)
 {
   struct lwp_info *lp;
@@ -2855,9 +2868,9 @@ linux_nat_filter_event (int lwpid, int status)
   if (WIFSTOPPED (status) && !lp)
     {
       linux_nat_debug_printf ("saving LWP %ld status %s in stopped_pids list",
-			      (long) lwpid, status_to_str (status));
+			      (long) lwpid, status_to_str (status).c_str ());
       add_to_pid_list (&stopped_pids, lwpid, status);
-      return NULL;
+      return;
     }
 
   /* Make sure we don't report an event for the exit of an LWP not in
@@ -2865,7 +2878,7 @@ linux_nat_filter_event (int lwpid, int status)
      if we detach from a program we originally forked and then it
      exits.  */
   if (!WIFSTOPPED (status) && !lp)
-    return NULL;
+    return;
 
   /* This LWP is stopped now.  (And if dead, this prevents it from
      ever being continued.)  */
@@ -2889,7 +2902,7 @@ linux_nat_filter_event (int lwpid, int status)
 	 on.  */
       status = W_STOPCODE (SIGTRAP);
       if (linux_handle_syscall_trap (lp, 0))
-	return NULL;
+	return;
     }
   else
     {
@@ -2905,7 +2918,7 @@ linux_nat_filter_event (int lwpid, int status)
       linux_nat_debug_printf ("Handling extended status 0x%06x", status);
 
       if (linux_handle_extended_wait (lp, status))
-	return NULL;
+	return;
     }
 
   /* Check if the thread has exited.  */
@@ -2921,7 +2934,7 @@ linux_nat_filter_event (int lwpid, int status)
 	     was not the end of the debugged application and should be
 	     ignored.  */
 	  exit_lwp (lp);
-	  return NULL;
+	  return;
 	}
 
       /* Note that even if the leader was ptrace-stopped, it can still
@@ -2937,7 +2950,7 @@ linux_nat_filter_event (int lwpid, int status)
       /* Store the pending event in the waitstatus, because
 	 W_EXITCODE(0,0) == 0.  */
       store_waitstatus (&lp->waitstatus, status);
-      return lp;
+      return;
     }
 
   /* Make sure we don't report a SIGSTOP that we sent ourselves in
@@ -2963,7 +2976,7 @@ linux_nat_filter_event (int lwpid, int status)
 
 	  linux_resume_one_lwp (lp, lp->step, GDB_SIGNAL_0);
 	  gdb_assert (lp->resumed);
-	  return NULL;
+	  return;
 	}
     }
 
@@ -2985,7 +2998,7 @@ linux_nat_filter_event (int lwpid, int status)
       gdb_assert (lp->resumed);
 
       /* Discard the event.  */
-      return NULL;
+      return;
     }
 
   /* Don't report signals that GDB isn't interested in, such as
@@ -3034,7 +3047,7 @@ linux_nat_filter_event (int lwpid, int status)
 	     target_pid_to_str (lp->ptid).c_str (),
 	     (signo != GDB_SIGNAL_0
 	      ? strsignal (gdb_signal_to_host (signo)) : "0"));
-	  return NULL;
+	  return;
 	}
     }
 
@@ -3042,7 +3055,6 @@ linux_nat_filter_event (int lwpid, int status)
   gdb_assert (lp);
   lp->status = status;
   save_stop_reason (lp);
-  return lp;
 }
 
 /* Detect zombie thread group leaders, and "exit" them.  We can't reap
@@ -3149,7 +3161,7 @@ linux_nat_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus,
   if (lp != NULL)
     {
       linux_nat_debug_printf ("Using pending wait status %s for %s.",
-			      status_to_str (lp->status),
+			      status_to_str (lp->status).c_str (),
 			      target_pid_to_str (lp->ptid).c_str ());
     }
 
@@ -3184,7 +3196,8 @@ linux_nat_wait_1 (ptid_t ptid, struct target_waitstatus *ourstatus,
       if (lwpid > 0)
 	{
 	  linux_nat_debug_printf ("waitpid %ld received %s",
-				  (long) lwpid, status_to_str (status));
+				  (long) lwpid,
+				  status_to_str (status).c_str ());
 
 	  linux_nat_filter_event (lwpid, status);
 	  /* Retry until nothing comes out of waitpid.  A single
@@ -3584,6 +3597,10 @@ linux_nat_target::mourn_inferior ()
 
   purge_lwp_list (pid);
 
+  /* Close the /proc/<pid>/mem file if it was open for this
+     inferior.  */
+  maybe_close_proc_mem_file (pid);
+
   if (! forks_exist_p ())
     /* Normal case, no other forks available.  */
     inf_ptrace_target::mourn_inferior ();
@@ -3676,10 +3693,8 @@ linux_nat_xfer_osdata (enum target_object object,
 		       ULONGEST *xfered_len);
 
 static enum target_xfer_status
-linux_proc_xfer_partial (enum target_object object,
-			 const char *annex, gdb_byte *readbuf,
-			 const gdb_byte *writebuf,
-			 ULONGEST offset, LONGEST len, ULONGEST *xfered_len);
+linux_proc_xfer_memory_partial (gdb_byte *readbuf, const gdb_byte *writebuf,
+				ULONGEST offset, LONGEST len, ULONGEST *xfered_len);
 
 enum target_xfer_status
 linux_nat_target::xfer_partial (enum target_object object,
@@ -3687,8 +3702,6 @@ linux_nat_target::xfer_partial (enum target_object object,
 				const gdb_byte *writebuf,
 				ULONGEST offset, ULONGEST len, ULONGEST *xfered_len)
 {
-  enum target_xfer_status xfer;
-
   if (object == TARGET_OBJECT_SIGNAL_INFO)
     return linux_xfer_siginfo (object, annex, readbuf, writebuf,
 			       offset, len, xfered_len);
@@ -3707,25 +3720,21 @@ linux_nat_target::xfer_partial (enum target_object object,
     return linux_nat_xfer_osdata (object, annex, readbuf, writebuf,
 				  offset, len, xfered_len);
 
-  /* GDB calculates all addresses in the largest possible address
-     width.
-     The address width must be masked before its final use - either by
-     linux_proc_xfer_partial or inf_ptrace_target::xfer_partial.
-
-     Compare ADDR_BIT first to avoid a compiler warning on shift overflow.  */
-
   if (object == TARGET_OBJECT_MEMORY)
     {
+      /* GDB calculates all addresses in the largest possible address
+	 width.  The address width must be masked before its final use
+	 by linux_proc_xfer_partial.
+
+	 Compare ADDR_BIT first to avoid a compiler warning on shift overflow.  */
       int addr_bit = gdbarch_addr_bit (target_gdbarch ());
 
       if (addr_bit < (sizeof (ULONGEST) * HOST_CHAR_BIT))
 	offset &= ((ULONGEST) 1 << addr_bit) - 1;
-    }
 
-  xfer = linux_proc_xfer_partial (object, annex, readbuf, writebuf,
-				  offset, len, xfered_len);
-  if (xfer != TARGET_XFER_EOF)
-    return xfer;
+      return linux_proc_xfer_memory_partial (readbuf, writebuf,
+					     offset, len, xfered_len);
+    }
 
   return inf_ptrace_target::xfer_partial (object, annex, readbuf, writebuf,
 					  offset, len, xfered_len);
@@ -3789,35 +3798,91 @@ linux_nat_target::pid_to_exec_file (int pid)
   return linux_proc_pid_to_exec_file (pid);
 }
 
-/* Implement the to_xfer_partial target method using /proc/<pid>/mem.
-   Because we can use a single read/write call, this can be much more
-   efficient than banging away at PTRACE_PEEKTEXT.  */
-
-static enum target_xfer_status
-linux_proc_xfer_partial (enum target_object object,
-			 const char *annex, gdb_byte *readbuf,
-			 const gdb_byte *writebuf,
-			 ULONGEST offset, LONGEST len, ULONGEST *xfered_len)
+/* Keep the /proc/<pid>/mem file open between memory accesses, as a
+   cache to avoid constantly closing/opening the file in the common
+   case of multiple memory reads/writes from/to the same inferior.
+   Note we don't keep a file open per inferior to avoid keeping too
+   many file descriptors open, which can run into resource limits.  */
+static struct
 {
-  LONGEST ret;
-  int fd;
-  char filename[64];
+  /* The LWP this open file is for.  Note that after opening the file,
+     even if the thread subsequently exits, the open file is still
+     usable for accessing memory.  It's only when the whole process
+     exits or execs that the file becomes invalid (at which point
+     reads/writes return EOF).  */
+  ptid_t ptid;
 
-  if (object != TARGET_OBJECT_MEMORY)
-    return TARGET_XFER_EOF;
+  /* The file descriptor.  -1 if file is not open.  */
+  int fd = -1;
 
-  /* Don't bother for one word.  */
-  if (len < 3 * sizeof (long))
-    return TARGET_XFER_EOF;
+  /* Close FD and clear it to -1.  */
+  void close ()
+  {
+    linux_nat_debug_printf ("closing fd %d for /proc/%d/task/%ld/mem\n",
+			    fd, ptid.pid (), ptid.lwp ());
+    ::close (fd);
+    fd = -1;
+  }
+} last_proc_mem_file;
 
-  /* We could keep this file open and cache it - possibly one per
-     thread.  That requires some juggling, but is even faster.  */
-  xsnprintf (filename, sizeof filename, "/proc/%ld/mem",
-	     inferior_ptid.lwp ());
-  fd = gdb_open_cloexec (filename, ((readbuf ? O_RDONLY : O_WRONLY)
-				    | O_LARGEFILE), 0);
-  if (fd == -1)
-    return TARGET_XFER_EOF;
+/* Close the /proc/<pid>/mem file if its LWP matches PTID.  */
+
+static void
+maybe_close_proc_mem_file (pid_t pid)
+{
+  if (last_proc_mem_file.ptid.pid () == pid)
+    last_proc_mem_file.close ();
+}
+
+/* Helper for linux_proc_xfer_memory_partial.  Accesses /proc via
+   PTID.  Returns -1 on error, with errno set.  Returns number of
+   read/written bytes otherwise.  Returns 0 on EOF, which indicates
+   the address space is gone (because the process exited or
+   execed).  */
+
+static ssize_t
+linux_proc_xfer_memory_partial_pid (ptid_t ptid,
+				    gdb_byte *readbuf, const gdb_byte *writebuf,
+				    ULONGEST offset, LONGEST len)
+{
+  ssize_t ret;
+
+  /* As long as we're hitting the same inferior, the previously open
+     file is good, even if the thread it was open for exits.  */
+  if (last_proc_mem_file.fd != -1
+      && last_proc_mem_file.ptid.pid () != ptid.pid ())
+    last_proc_mem_file.close ();
+
+  if (last_proc_mem_file.fd == -1)
+    {
+      /* Actually use /proc/<pid>/task/<lwp>/mem instead of
+	 /proc/<lwp>/mem to avoid PID-reuse races, as we may be trying
+	 to read memory via a thread which we've already reaped.
+	 /proc/<lwp>/mem could open a file for the wrong process.  If
+	 the LWPID is reused for the same process it's OK, we can read
+	 memory through it just fine.  If the LWPID is reused for a
+	 different process, then the open will fail because the path
+	 won't exist.  */
+      char filename[64];
+      xsnprintf (filename, sizeof filename,
+		 "/proc/%d/task/%ld/mem", ptid.pid (), ptid.lwp ());
+
+      last_proc_mem_file.fd
+	= gdb_open_cloexec (filename, O_RDWR | O_LARGEFILE, 0);
+
+      if (last_proc_mem_file.fd == -1)
+	{
+	  linux_nat_debug_printf ("opening %s failed: %s (%d)\n",
+				  filename, safe_strerror (errno), errno);
+	  return -1;
+	}
+      last_proc_mem_file.ptid = ptid;
+
+      linux_nat_debug_printf ("opened fd %d for %s\n",
+			      last_proc_mem_file.fd, filename);
+    }
+
+  int fd = last_proc_mem_file.fd;
 
   /* Use pread64/pwrite64 if available, since they save a syscall and can
      handle 64-bit offsets even on 32-bit platforms (for instance, SPARC
@@ -3832,17 +3897,128 @@ linux_proc_xfer_partial (enum target_object object,
 	   : write (fd, writebuf, len));
 #endif
 
-  close (fd);
-
-  if (ret == -1 || ret == 0)
-    return TARGET_XFER_EOF;
-  else
+  if (ret == -1)
     {
-      *xfered_len = ret;
-      return TARGET_XFER_OK;
+      linux_nat_debug_printf ("accessing fd %d for pid %ld failed: %s (%d)\n",
+			      fd, ptid.lwp (),
+			      safe_strerror (errno), errno);
     }
+  else if (ret == 0)
+    {
+      linux_nat_debug_printf ("accessing fd %d for pid %ld got EOF\n",
+			      fd, ptid.lwp ());
+    }
+
+  return ret;
 }
 
+/* Implement the to_xfer_partial target method using /proc/<pid>/mem.
+   Because we can use a single read/write call, this can be much more
+   efficient than banging away at PTRACE_PEEKTEXT.  Also, unlike
+   PTRACE_PEEKTEXT/PTRACE_POKETEXT, this works with running
+   threads.  */
+
+static enum target_xfer_status
+linux_proc_xfer_memory_partial (gdb_byte *readbuf, const gdb_byte *writebuf,
+				ULONGEST offset, LONGEST len,
+				ULONGEST *xfered_len)
+{
+  /* Unlike PTRACE_PEEKTEXT/PTRACE_POKETEXT, reading/writing from/to
+     /proc/<pid>/mem works with running threads, and even exited
+     threads if the file was already open.  If we need to open or
+     reopen the /proc file though, we may get an EACCES error
+     ("Permission denied"), meaning the thread is gone but its exit
+     status isn't reaped yet, or ENOENT if the thread is gone and
+     already reaped.  In that case, just try opening the file for
+     another thread in the process.  If all threads fail, then it must
+     mean the whole process exited, in which case there's nothing else
+     to do and we just fail the memory access.
+
+     Note we don't simply always access via the leader thread because
+     the leader may exit without exiting the whole process.  See
+     gdb.threads/leader-exit.exp, for example.  */
+
+  /* It's frequently the case that the selected thread is stopped, and
+     is thus not likely to exit (unless something kills the process
+     outside our control, with e.g., SIGKILL).  Give that one a try
+     first.
+
+     Also, inferior_ptid may actually point at an LWP not in lwp_list.
+     This happens when we're detaching from a fork child that we don't
+     want to debug ("set detach-on-fork on"), and the breakpoints
+     module uninstalls breakpoints from the fork child.  Which process
+     to access is given by inferior_ptid.  */
+  int res = linux_proc_xfer_memory_partial_pid (inferior_ptid,
+						readbuf, writebuf,
+						offset, len);
+  if (res == 0)
+    {
+      /* EOF means the address space is gone, the whole
+	 process exited or execed.  */
+      return TARGET_XFER_EOF;
+    }
+  else if (res != -1)
+    {
+      *xfered_len = res;
+      return TARGET_XFER_OK;
+    }
+  else
+    {
+      /* If we simply raced with the thread exiting (EACCES), or the
+	 current thread is THREAD_EXITED (ENOENT), try some other
+	 thread.  It's easier to handle an ENOENT failure than check
+	 for THREAD_EXIT upfront because this function is called
+	 before a thread for inferior_ptid is added to the thread
+	 list.  */
+      if (errno != EACCES && errno != ENOENT)
+	return TARGET_XFER_EOF;
+    }
+
+  int cur_pid = current_inferior ()->pid;
+
+  if (inferior_ptid.pid () != cur_pid)
+    {
+      /* We're accessing a fork child, and the access above failed.
+	 Don't bother iterating the LWP list, since there's no other
+	 LWP for this process.  */
+      return TARGET_XFER_EOF;
+    }
+
+  /* Iterate over LWPs of the current inferior, trying to access
+     memory through one of them.  */
+  for (lwp_info *lp = lwp_list; lp != nullptr; lp = lp->next)
+    {
+      if (lp->ptid.pid () != cur_pid)
+	continue;
+
+      res = linux_proc_xfer_memory_partial_pid (lp->ptid,
+						readbuf, writebuf,
+						offset, len);
+
+      if (res == 0)
+	{
+	  /* EOF means the address space is gone, the whole process
+	     exited or execed.  */
+	  return TARGET_XFER_EOF;
+	}
+      else if (res == -1)
+	{
+	  if (errno == EACCES)
+	    {
+	      /* This LWP is gone, try another one.  */
+	      continue;
+	    }
+
+	  return TARGET_XFER_EOF;
+	}
+
+      *xfered_len = res;
+      return TARGET_XFER_OK;
+    }
+
+  /* No luck.  */
+  return TARGET_XFER_EOF;
+}
 
 /* Parse LINE as a signal set and add its set bits to SIGS.  */
 
@@ -4019,11 +4195,7 @@ linux_nat_target::supports_multi_process ()
 bool
 linux_nat_target::supports_disable_randomization ()
 {
-#ifdef HAVE_PERSONALITY
   return true;
-#else
-  return false;
-#endif
 }
 
 /* SIGCHLD handler that serves two purposes: In non-stop/async mode,
@@ -4406,16 +4578,24 @@ Enables printf debugging output."),
    the GNU/Linux Threads library and therefore doesn't really belong
    here.  */
 
-/* Return the set of signals used by the threads library in *SET.  */
+/* NPTL reserves the first two RT signals, but does not provide any
+   way for the debugger to query the signal numbers - fortunately
+   they don't change.  */
+static int lin_thread_signals[] = { __SIGRTMIN, __SIGRTMIN + 1 };
 
-void
-lin_thread_get_thread_signals (sigset_t *set)
+/* See linux-nat.h.  */
+
+unsigned int
+lin_thread_get_thread_signal_num (void)
 {
-  sigemptyset (set);
+  return sizeof (lin_thread_signals) / sizeof (lin_thread_signals[0]);
+}
 
-  /* NPTL reserves the first two RT signals, but does not provide any
-     way for the debugger to query the signal numbers - fortunately
-     they don't change.  */
-  sigaddset (set, __SIGRTMIN);
-  sigaddset (set, __SIGRTMIN + 1);
+/* See linux-nat.h.  */
+
+int
+lin_thread_get_thread_signal (unsigned int i)
+{
+  gdb_assert (i < lin_thread_get_thread_signal_num ());
+  return lin_thread_signals[i];
 }

@@ -31,21 +31,12 @@ OR1K_OBJS = \
 
 SIM_OBJS = \
 	$(SIM_NEW_COMMON_OBJS) \
-	sim-cpu.o \
-	sim-hload.o \
-	sim-hrw.o \
-	sim-reg.o \
 	cgen-utils.o \
 	cgen-trace.o \
 	cgen-scache.o \
 	cgen-run.o \
 	cgen-fpu.o \
-	cgen-accfp.o \
-	sim-reason.o \
-	sim-engine.o \
-	sim-model.o \
-	sim-stop.o \
-	$(TRAPS_OBJ)
+	cgen-accfp.o
 
 SIM_OBJS += $(OR1K_OBJS)
 
@@ -62,8 +53,10 @@ SIM_EXTRA_CFLAGS =
 
 SIM_EXTRA_LIBS = -lm
 
-SIM_RUN_OBJS = nrun.o
 SIM_EXTRA_CLEAN = or1k-clean
+
+# Code doesn't build cleanly yet.
+SIM_WERROR_CFLAGS =
 
 ## COMMON_POST_CONFIG_FRAG
 
@@ -85,16 +78,9 @@ stamp-mloop: $(srcdir)/../common/genmloop.sh mloop.in Makefile
 	$(SHELL) $(srcroot)/move-if-change eng.hin eng.h
 	$(SHELL) $(srcroot)/move-if-change mloop.cin mloop.c
 	touch stamp-mloop
-mloop.o: mloop.c sem-switch.c $(OR1K32BF_INCLUDE_DEPS)
 or1k.o: or1k.c $(OR1K32BF_INCLUDE_DEPS)
 	$(COMPILE) $<
 	$(POSTCOMPILE)
-arch.o: arch.c $(SIM_MAIN_DEPS)
-cpu.o: cpu.c $(OR1K32BF_INCLUDE_DEPS)
-decode.o: decode.c $(OR1K32BF_INCLUDE_DEPS)
-sem.o: sem.c $(OR1K32BF_INCLUDE_DEPS)
-sem-switch.o: sem-switch.c $(OR1K32BF_INCLUDE_DEPS)
-model.o: model.c $(OR1K32BF_INCLUDE_DEPS)
 
 sim-if.o: sim-if.c $(SIM_MAIN_DEPS) $(srcdir)/../common/sim-core.h eng.h
 	$(COMPILE) $<
@@ -106,11 +92,6 @@ traps.o: traps.c $(SIM_MAIN_DEPS) eng.h
 
 or1k-clean:
 	rm -f mloop.c eng.h stamp-mloop
-
-# cgen support, enable with --enable-cgen-maint
-CGEN_MAINT = ; @true
-# The following line is commented in or out depending upon --enable-cgen-maint.
-@CGEN_MAINT@CGEN_MAINT =
 
 stamps: stamp-arch stamp-cpu stamp-mloop
 

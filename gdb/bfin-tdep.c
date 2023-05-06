@@ -374,6 +374,7 @@ bfin_frame_prev_register (struct frame_info *this_frame,
 
 static const struct frame_unwind bfin_frame_unwind =
 {
+  "bfin prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   bfin_frame_this_id,
@@ -597,7 +598,7 @@ bfin_sw_breakpoint_from_kind (struct gdbarch *gdbarch, int kind, int *size)
 
   *size = kind;
 
-  if (strcmp (target_shortname, "sim") == 0)
+  if (strcmp (target_shortname (), "sim") == 0)
     return bfin_sim_breakpoint;
   else
     return bfin_breakpoint;

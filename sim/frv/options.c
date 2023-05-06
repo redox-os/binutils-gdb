@@ -17,6 +17,9 @@ GNU General Public License for more details.
 You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #define WANT_CPU frvbf
 #define WANT_CPU_FRVBF
 
@@ -24,16 +27,8 @@ along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 #include "sim-assert.h"
 #include "sim-options.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 
 /* FRV specific command line options. */
 

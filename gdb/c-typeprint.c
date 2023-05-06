@@ -171,7 +171,7 @@ c_print_type (struct type *type,
 	      int show, int level,
 	      const struct type_print_options *flags)
 {
-  struct print_offset_data podata;
+  struct print_offset_data podata (flags);
 
   c_print_type_1 (type, varstring, stream, show, level,
 		  current_language->la_language, flags, &podata);
@@ -188,7 +188,7 @@ c_print_type (struct type *type,
 	      enum language language,
 	      const struct type_print_options *flags)
 {
-  struct print_offset_data podata;
+  struct print_offset_data podata (flags);
 
   c_print_type_1 (type, varstring, stream, show, level, language, flags,
 		  &podata);
@@ -528,7 +528,7 @@ c_type_print_modifier (struct type *type, struct ui_file *stream,
     }
 
   address_space_id
-    = address_space_type_instance_flags_to_name (get_type_arch (type),
+    = address_space_type_instance_flags_to_name (type->arch (),
 						 type->instance_flags ());
   if (address_space_id)
     {
@@ -965,7 +965,7 @@ output_access_specifier (struct ui_file *stream,
 static bool
 need_access_label_p (struct type *type)
 {
-  if (TYPE_DECLARED_CLASS (type))
+  if (type->is_declared_class ())
     {
       QUIT;
       for (int i = TYPE_N_BASECLASSES (type); i < type->num_fields (); i++)
@@ -1061,7 +1061,7 @@ c_type_print_base_struct_union (struct type *type, struct ui_file *stream,
   c_type_print_modifier (type, stream, 0, 1, language);
   if (type->code () == TYPE_CODE_UNION)
     fprintf_filtered (stream, "union ");
-  else if (TYPE_DECLARED_CLASS (type))
+  else if (type->is_declared_class ())
     fprintf_filtered (stream, "class ");
   else
     fprintf_filtered (stream, "struct ");
@@ -1121,13 +1121,12 @@ c_type_print_base_struct_union (struct type *type, struct ui_file *stream,
       if (type->num_fields () == 0 && TYPE_NFN_FIELDS (type) == 0
 	  && TYPE_TYPEDEF_FIELD_COUNT (type) == 0)
 	{
+	  print_spaces_filtered_with_print_options (level + 4, stream, flags);
 	  if (type->is_stub ())
-	    fprintf_filtered (stream, _("%*s%p[<incomplete type>%p]\n"),
-			      level + 4, "",
+	    fprintf_filtered (stream, _("%p[<incomplete type>%p]\n"),
 			      metadata_style.style ().ptr (), nullptr);
 	  else
-	    fprintf_filtered (stream, _("%*s%p[<no data fields>%p]\n"),
-			      level + 4, "",
+	    fprintf_filtered (stream, _("%p[<no data fields>%p]\n"),
 			      metadata_style.style ().ptr (), nullptr);
 	}
 
@@ -1149,7 +1148,7 @@ c_type_print_base_struct_union (struct type *type, struct ui_file *stream,
       int len = type->num_fields ();
       vptr_fieldno = get_vptr_fieldno (type, &basetype);
 
-      struct print_offset_data local_podata;
+      struct print_offset_data local_podata (flags);
 
       for (int i = TYPE_N_BASECLASSES (type); i < len; i++)
 	{
@@ -1499,7 +1498,7 @@ c_type_print_base_1 (struct type *type, struct ui_file *stream,
 	    fprintf_filtered (stream, "union ");
 	  else if (type->code () == TYPE_CODE_STRUCT)
 	    {
-	      if (TYPE_DECLARED_CLASS (type))
+	      if (type->is_declared_class ())
 		fprintf_filtered (stream, "class ");
 	      else
 		fprintf_filtered (stream, "struct ");
@@ -1552,7 +1551,7 @@ c_type_print_base_1 (struct type *type, struct ui_file *stream,
     case TYPE_CODE_ENUM:
       c_type_print_modifier (type, stream, 0, 1, language);
       fprintf_filtered (stream, "enum ");
-      if (TYPE_DECLARED_CLASS (type))
+      if (type->is_declared_class ())
 	fprintf_filtered (stream, "class ");
       /* Print the tag name if it exists.
 	 The aCC compiler emits a spurious 
@@ -1724,7 +1723,7 @@ c_type_print_base (struct type *type, struct ui_file *stream,
 		   int show, int level,
 		   const struct type_print_options *flags)
 {
-  struct print_offset_data podata;
+  struct print_offset_data podata (flags);
 
   c_type_print_base_1 (type, stream, show, level,
 		       current_language->la_language, flags, &podata);

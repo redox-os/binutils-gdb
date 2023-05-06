@@ -264,7 +264,9 @@ proceed_thread_callback (struct thread_info *thread, void *arg)
 static void
 exec_continue (char **argv, int argc)
 {
-  prepare_execution_command (current_top_target (), mi_async_p ());
+  prepare_execution_command (current_inferior ()->top_target (), mi_async_p ());
+
+  scoped_disable_commit_resumed disable_commit_resumed ("mi continue");
 
   if (non_stop)
     {
@@ -311,6 +313,8 @@ exec_continue (char **argv, int argc)
 	  continue_1 (1);
 	}
     }
+
+  disable_commit_resumed.reset_and_commit ();
 }
 
 static void
@@ -322,7 +326,7 @@ exec_reverse_continue (char **argv, int argc)
     error (_("Already in reverse mode."));
 
   if (!target_can_execute_reverse ())
-    error (_("Target %s does not support this command."), target_shortname);
+    error (_("Target %s does not support this command."), target_shortname ());
 
   scoped_restore save_exec_dir = make_scoped_restore (&execution_direction,
 						      EXEC_REVERSE);
@@ -734,12 +738,12 @@ list_available_thread_groups (const std::set<int> &ids, int recurse)
 
       ui_out_emit_tuple tuple_emitter (uiout, NULL);
 
-      uiout->field_string ("id", pid->c_str ());
+      uiout->field_string ("id", *pid);
       uiout->field_string ("type", "process");
       if (cmd)
-	uiout->field_string ("description", cmd->c_str ());
+	uiout->field_string ("description", *cmd);
       if (user)
-	uiout->field_string ("user", user->c_str ());
+	uiout->field_string ("user", *user);
       if (cores)
 	output_cores (uiout, "cores", cores->c_str ());
 
@@ -758,9 +762,9 @@ list_available_thread_groups (const std::set<int> &ids, int recurse)
 		  const std::string *tid = get_osdata_column (child, "tid");
 		  const std::string *tcore = get_osdata_column (child, "core");
 
-		  uiout->field_string ("id", tid->c_str ());
+		  uiout->field_string ("id", *tid);
 		  if (tcore)
-		    uiout->field_string ("core", tcore->c_str ());
+		    uiout->field_string ("core", *tcore);
 		}
 	    }
 	}
@@ -1328,7 +1332,8 @@ mi_cmd_data_read_memory (const char *command, char **argv, int argc)
 
   gdb::byte_vector mbuf (total_bytes);
 
-  nr_bytes = target_read (current_top_target (), TARGET_OBJECT_MEMORY, NULL,
+  nr_bytes = target_read (current_inferior ()->top_target (),
+			  TARGET_OBJECT_MEMORY, NULL,
 			  mbuf.data (), addr, total_bytes);
   if (nr_bytes <= 0)
     error (_("Unable to read memory."));
@@ -1448,7 +1453,7 @@ mi_cmd_data_read_memory_bytes (const char *command, char **argv, int argc)
   length = atol (argv[1]);
 
   std::vector<memory_read_result> result
-    = read_memory_robust (current_top_target (), addr, length);
+    = read_memory_robust (current_inferior ()->top_target (), addr, length);
 
   if (result.size () == 0)
     error (_("Unable to read memory."));
@@ -1465,7 +1470,7 @@ mi_cmd_data_read_memory_bytes (const char *command, char **argv, int argc)
       std::string data = bin2hex (read_result.data.get (),
 				  (read_result.end - read_result.begin)
 				  * unit_size);
-      uiout->field_string ("contents", data.c_str ());
+      uiout->field_string ("contents", data);
     }
 }
 
@@ -1881,8 +1886,8 @@ command_notifies_uscc_observer (struct mi_parse *command)
   if (command->op == CLI_COMMAND)
     {
       /* CLI commands "thread" and "inferior" already send it.  */
-      return (strncmp (command->command, "thread ", 7) == 0
-	      || strncmp (command->command, "inferior ", 9) == 0);
+      return (startswith (command->command, "thread ")
+	      || startswith (command->command, "inferior "));
     }
   else /* MI_COMMAND */
     {
@@ -1890,8 +1895,8 @@ command_notifies_uscc_observer (struct mi_parse *command)
 	  && command->argc > 1)
 	{
 	  /* "thread" and "inferior" again, but through -interpreter-exec.  */
-	  return (strncmp (command->argv[1], "thread ", 7) == 0
-		  || strncmp (command->argv[1], "inferior ", 9) == 0);
+	  return (startswith (command->argv[1], "thread ")
+		  || startswith (command->argv[1], "inferior "));
 	}
 
       else
@@ -2665,7 +2670,7 @@ mi_cmd_trace_frame_collected (const char *command, char **argv, int argc)
 	    if (target_read_memory (r.start, data.data (), r.length) == 0)
 	      {
 		std::string data_str = bin2hex (data.data (), r.length);
-		uiout->field_string ("contents", data_str.c_str ());
+		uiout->field_string ("contents", data_str);
 	      }
 	    else
 	      uiout->field_skip ("contents");
@@ -2732,21 +2737,23 @@ void _initialize_mi_main ();
 void
 _initialize_mi_main ()
 {
-  struct cmd_list_element *c;
-
-  add_setshow_boolean_cmd ("mi-async", class_run,
-			   &mi_async_1, _("\
+  set_show_commands mi_async_cmds
+    = add_setshow_boolean_cmd ("mi-async", class_run,
+			       &mi_async_1, _("\
 Set whether MI asynchronous mode is enabled."), _("\
 Show whether MI asynchronous mode is enabled."), _("\
 Tells GDB whether MI should be in asynchronous mode."),
-			   set_mi_async_command,
-			   show_mi_async_command,
-			   &setlist,
-			   &showlist);
+			       set_mi_async_command,
+			       show_mi_async_command,
+			       &setlist, &showlist);
 
   /* Alias old "target-async" to "mi-async".  */
-  c = add_alias_cmd ("target-async", "mi-async", class_run, 0, &setlist);
-  deprecate_cmd (c, "set mi-async");
-  c = add_alias_cmd ("target-async", "mi-async", class_run, 0, &showlist);
-  deprecate_cmd (c, "show mi-async");
+  cmd_list_element *set_target_async_cmd
+    = add_alias_cmd ("target-async", mi_async_cmds.set, class_run, 0, &setlist);
+  deprecate_cmd (set_target_async_cmd, "set mi-async");
+
+  cmd_list_element *show_target_async_cmd
+    = add_alias_cmd ("target-async", mi_async_cmds.show, class_run, 0,
+		     &showlist);
+  deprecate_cmd (show_target_async_cmd, "show mi-async");
 }

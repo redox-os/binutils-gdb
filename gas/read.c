@@ -64,7 +64,7 @@
 #endif
 
 char *input_line_pointer;	/*->next char of source file to parse.  */
-bfd_boolean input_from_string = FALSE;
+bool input_from_string = false;
 
 #if BITS_PER_CHAR != 8
 /*  The following table is indexed by[(char)] and will break if
@@ -364,9 +364,7 @@ static const pseudo_typeS potable[] = {
   {"common.s", s_mri_common, 1},
   {"data", s_data, 0},
   {"dc", cons, 2},
-#ifdef TC_ADDRESS_BYTES
   {"dc.a", cons, 0},
-#endif
   {"dc.b", cons, 1},
   {"dc.d", float_cons, 'd'},
   {"dc.l", cons, 4},
@@ -530,6 +528,9 @@ static const pseudo_typeS potable[] = {
   {"weakref", s_weakref, 0},
   {"word", cons, 2},
   {"zero", s_space, 0},
+  {"2byte", cons, 2},
+  {"4byte", cons, 4},
+  {"8byte", cons, 8},
   {NULL, NULL, 0}			/* End sentinel.  */
 };
 
@@ -792,7 +793,7 @@ assemble_one (char *line)
 
 #endif  /* HANDLE_BUNDLE */
 
-static bfd_boolean
+static bool
 in_bss (void)
 {
   flagword flags = bfd_section_flags (now_seg);
@@ -898,7 +899,7 @@ read_a_source_file (const char *name)
 #endif
       while (input_line_pointer < buffer_limit)
 	{
-	  bfd_boolean was_new_line;
+	  bool was_new_line;
 	  /* We have more of this buffer to parse.  */
 
 	  /* We now have input_line_pointer->1st char of next line.
@@ -1319,7 +1320,7 @@ read_a_source_file (const char *name)
 	      char *tmp_buf = 0;
 
 	      s = input_line_pointer;
-	      if (strncmp (s, "APP\n", 4))
+	      if (!startswith (s, "APP\n"))
 		{
 		  /* We ignore it.  */
 		  ignore_rest_of_line ();
@@ -3615,6 +3616,51 @@ s_nops (int ignore ATTRIBUTE_UNUSED)
   *p = val.X_add_number;
 }
 
+static int
+parse_one_float (int float_type, char temp[MAXIMUM_NUMBER_OF_CHARS_FOR_FLOAT])
+{
+  int length;
+
+  SKIP_WHITESPACE ();
+
+  /* Skip any 0{letter} that may be present.  Don't even check if the
+     letter is legal.  Someone may invent a "z" format and this routine
+     has no use for such information. Lusers beware: you get
+     diagnostics if your input is ill-conditioned.  */
+  if (input_line_pointer[0] == '0'
+      && ISALPHA (input_line_pointer[1]))
+    input_line_pointer += 2;
+
+  /* Accept :xxxx, where the x's are hex digits, for a floating point
+     with the exact digits specified.  */
+  if (input_line_pointer[0] == ':')
+    {
+      ++input_line_pointer;
+      length = hex_float (float_type, temp);
+      if (length < 0)
+	{
+	  ignore_rest_of_line ();
+	  return length;
+	}
+    }
+  else
+    {
+      const char *err;
+
+      err = md_atof (float_type, temp, &length);
+      know (length <= MAXIMUM_NUMBER_OF_CHARS_FOR_FLOAT);
+      know (err != NULL || length > 0);
+      if (err)
+	{
+	  as_bad (_("bad floating literal: %s"), err);
+	  ignore_rest_of_line ();
+	  return -1;
+	}
+    }
+
+  return length;
+}
+
 /* This is like s_space, but the value is a floating point number with
    the given precision.  This is for the MRI dcb.s pseudo-op and
    friends.  */
@@ -3649,42 +3695,12 @@ s_float_space (int float_type)
 
   ++input_line_pointer;
 
-  SKIP_WHITESPACE ();
-
-  /* Skip any 0{letter} that may be present.  Don't even check if the
-   * letter is legal.  */
-  if (input_line_pointer[0] == '0'
-      && ISALPHA (input_line_pointer[1]))
-    input_line_pointer += 2;
-
-  /* Accept :xxxx, where the x's are hex digits, for a floating point
-     with the exact digits specified.  */
-  if (input_line_pointer[0] == ':')
+  flen = parse_one_float (float_type, temp);
+  if (flen < 0)
     {
-      flen = hex_float (float_type, temp);
-      if (flen < 0)
-	{
-	  ignore_rest_of_line ();
-	  if (flag_mri)
-	    mri_comment_end (stop, stopc);
-	  return;
-	}
-    }
-  else
-    {
-      const char *err;
-
-      err = md_atof (float_type, temp, &flen);
-      know (flen <= MAXIMUM_NUMBER_OF_CHARS_FOR_FLOAT);
-      know (err != NULL || flen > 0);
-      if (err)
-	{
-	  as_bad (_("bad floating literal: %s"), err);
-	  ignore_rest_of_line ();
-	  if (flag_mri)
-	    mri_comment_end (stop, stopc);
-	  return;
-	}
+      if (flag_mri)
+	mri_comment_end (stop, stopc);
+      return;
     }
 
   while (--count >= 0)
@@ -4092,10 +4108,8 @@ cons_worker (int nbytes,	/* 1=.byte, 2=.word, 4=.long.  */
       return;
     }
 
-#ifdef TC_ADDRESS_BYTES
   if (nbytes == 0)
     nbytes = TC_ADDRESS_BYTES ();
-#endif
 
 #ifdef md_cons_align
   md_cons_align (nbytes);
@@ -4506,24 +4520,19 @@ emit_expr_with_reloc (expressionS *exp,
       valueT get;
       valueT use;
       valueT mask;
-      valueT hibit;
       valueT unmask;
 
       /* JF << of >= number of bits in the object is undefined.  In
 	 particular SPARC (Sun 4) has problems.  */
       if (nbytes >= sizeof (valueT))
 	{
+	  know (nbytes == sizeof (valueT));
 	  mask = 0;
-	  if (nbytes > sizeof (valueT))
-	    hibit = 0;
-	  else
-	    hibit = (valueT) 1 << (nbytes * BITS_PER_CHAR - 1);
 	}
       else
 	{
 	  /* Don't store these bits.  */
 	  mask = ~(valueT) 0 << (BITS_PER_CHAR * nbytes);
-	  hibit = (valueT) 1 << (nbytes * BITS_PER_CHAR - 1);
 	}
 
       unmask = ~mask;		/* Do store these bits.  */
@@ -4535,23 +4544,11 @@ emit_expr_with_reloc (expressionS *exp,
 
       get = exp->X_add_number;
       use = get & unmask;
-      if ((get & mask) != 0
-	  && ((get & mask) != mask
-	      || (get & hibit) == 0))
+      if ((get & mask) != 0 && (-get & mask) != 0)
 	{
 	  /* Leading bits contain both 0s & 1s.  */
-#if defined (BFD64) && BFD_HOST_64BIT_LONG_LONG
-#ifndef __MSVCRT__
-	  as_warn (_("value 0x%llx truncated to 0x%llx"),
-		   (unsigned long long) get, (unsigned long long) use);
-#else
-	  as_warn (_("value 0x%I64x truncated to 0x%I64x"),
-		   (unsigned long long) get, (unsigned long long) use);
-#endif
-#else
-	  as_warn (_("value 0x%lx truncated to 0x%lx"),
-		   (unsigned long) get, (unsigned long) use);
-#endif
+	  as_warn (_("value 0x%" BFD_VMA_FMT "x truncated to 0x%" BFD_VMA_FMT "x"),
+		   get, use);
 	}
       /* Put bytes in right order.  */
       md_number_to_chars (p, use, (int) nbytes);
@@ -4927,7 +4924,6 @@ float_cons (/* Clobbers input_line-pointer, checks end-of-line.  */
 {
   char *p;
   int length;			/* Number of chars in an object.  */
-  const char *err;		/* Error from scanning floating literal.  */
   char temp[MAXIMUM_NUMBER_OF_CHARS_FOR_FLOAT];
 
   if (is_it_end_of_statement ())
@@ -4961,41 +4957,9 @@ float_cons (/* Clobbers input_line-pointer, checks end-of-line.  */
 
   do
     {
-      /* input_line_pointer->1st char of a flonum (we hope!).  */
-      SKIP_WHITESPACE ();
-
-      /* Skip any 0{letter} that may be present. Don't even check if the
-	 letter is legal. Someone may invent a "z" format and this routine
-	 has no use for such information. Lusers beware: you get
-	 diagnostics if your input is ill-conditioned.  */
-      if (input_line_pointer[0] == '0'
-	  && ISALPHA (input_line_pointer[1]))
-	input_line_pointer += 2;
-
-      /* Accept :xxxx, where the x's are hex digits, for a floating
-	 point with the exact digits specified.  */
-      if (input_line_pointer[0] == ':')
-	{
-	  ++input_line_pointer;
-	  length = hex_float (float_type, temp);
-	  if (length < 0)
-	    {
-	      ignore_rest_of_line ();
-	      return;
-	    }
-	}
-      else
-	{
-	  err = md_atof (float_type, temp, &length);
-	  know (length <= MAXIMUM_NUMBER_OF_CHARS_FOR_FLOAT);
-	  know (err != NULL || length > 0);
-	  if (err)
-	    {
-	      as_bad (_("bad floating literal: %s"), err);
-	      ignore_rest_of_line ();
-	      return;
-	    }
-	}
+      length = parse_one_float (float_type, temp);
+      if (length < 0)
+	return;
 
       if (!need_pass_2)
 	{
@@ -5740,12 +5704,12 @@ demand_copy_C_string (int *len_pointer)
 
       for (len = *len_pointer; len > 0; len--)
 	{
-	  if (*s == 0)
+	  if (s[len - 1] == 0)
 	    {
 	      s = 0;
-	      len = 1;
 	      *len_pointer = 0;
 	      as_bad (_("this string may not contain \'\\0\'"));
+	      break;
 	    }
 	}
     }
@@ -5906,7 +5870,16 @@ s_incbin (int x ATTRIBUTE_UNUSED)
   if (binfile)
     {
       long   file_len;
+      struct stat filestat;
 
+      if (fstat (fileno (binfile), &filestat) != 0
+	  || ! S_ISREG (filestat.st_mode)
+	  || S_ISDIR (filestat.st_mode))
+	{
+	  as_bad (_("unable to include `%s'"), path);
+	  goto done;
+	}
+      
       register_dependency (path);
 
       /* Compute the length of the file.  */
@@ -6362,7 +6335,7 @@ temp_ilp (char *buf)
 
   input_line_pointer = buf;
   buffer_limit = buf + strlen (buf);
-  input_from_string = TRUE;
+  input_from_string = true;
 }
 
 /* Restore a saved input line pointer.  */
@@ -6374,7 +6347,7 @@ restore_ilp (void)
 
   input_line_pointer = saved_ilp;
   buffer_limit = saved_limit;
-  input_from_string = FALSE;
+  input_from_string = false;
 
   saved_ilp = NULL;
 }

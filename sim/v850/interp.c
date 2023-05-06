@@ -1,20 +1,14 @@
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
 #include "sim-options.h"
 #include "v850_sim.h"
 #include "sim-assert.h"
 #include "itable.h"
 
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
 
 #include "bfd.h"
 
@@ -203,16 +197,17 @@ sim_open (SIM_OPEN_KIND    kind,
 
   SIM_ASSERT (STATE_MAGIC (sd) == SIM_MAGIC_NUMBER);
 
+  /* Set default options before parsing user options.  */
+  current_target_byte_order = BFD_ENDIAN_LITTLE;
+
   /* The cpu data is kept in a separately allocated chunk of memory.  */
-  if (sim_cpu_alloc_all (sd, 1, /*cgen_cpu_max_extra_bytes ()*/0) != SIM_RC_OK)
+  if (sim_cpu_alloc_all (sd, 1) != SIM_RC_OK)
     return 0;
 
   /* for compatibility */
   simulator = sd;
 
   /* FIXME: should be better way of setting up interrupts */
-  STATE_WATCHPOINTS (sd)->pc = &(PC);
-  STATE_WATCHPOINTS (sd)->sizeof_pc = sizeof (PC);
   STATE_WATCHPOINTS (sd)->interrupt_handler = do_interrupt;
   STATE_WATCHPOINTS (sd)->interrupt_names = interrupt_names;
 
@@ -226,9 +221,9 @@ sim_open (SIM_OPEN_KIND    kind,
   /* Allocate core managed memory */
 
   /* "Mirror" the ROM addresses below 1MB. */
-  sim_do_commandf (sd, "memory region 0,0x100000,0x%lx", V850_ROM_SIZE);
+  sim_do_commandf (sd, "memory region 0,0x100000,0x%x", V850_ROM_SIZE);
   /* Chunk of ram adjacent to rom */
-  sim_do_commandf (sd, "memory region 0x100000,0x%lx", V850_LOW_END-0x100000);
+  sim_do_commandf (sd, "memory region 0x100000,0x%x", V850_LOW_END-0x100000);
   /* peripheral I/O region - mirror 1K across 4k (0x1000) */
   sim_do_command (sd, "memory region 0xfff000,0x1000,1024");
   /* similarly if in the internal RAM region */

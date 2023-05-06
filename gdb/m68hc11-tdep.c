@@ -845,14 +845,14 @@ m68hc11_frame_unwind_cache (struct frame_info *this_frame,
   /* Adjust all the saved registers so that they contain addresses and not
      offsets.  */
   for (i = 0; i < gdbarch_num_cooked_regs (gdbarch); i++)
-    if (trad_frame_addr_p (info->saved_regs, i))
+    if (info->saved_regs[i].is_addr ())
       {
 	info->saved_regs[i].set_addr (info->saved_regs[i].addr () + this_base);
       }
 
   /* The previous frame's SP needed to be computed.  Save the computed
      value.  */
-  trad_frame_set_value (info->saved_regs, HARD_SP_REGNUM, info->prev_sp);
+  info->saved_regs[HARD_SP_REGNUM].set_value (info->prev_sp);
 
   return info;
 }
@@ -924,6 +924,7 @@ m68hc11_frame_prev_register (struct frame_info *this_frame,
 }
 
 static const struct frame_unwind m68hc11_frame_unwind = {
+  "m68hc11 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   m68hc11_frame_this_id,

@@ -112,7 +112,7 @@ in alphabetical order.  Their affiliations are provided for reference
 only - their maintainership status is individual and not through their
 affiliation, and they act on behalf of the GNU project.
 
-       Pedro Alves (Red Hat)
+       Pedro Alves
        Joel Brobecker (AdaCore)
        Doug Evans (Google)
        Eli Zaretskii
@@ -148,7 +148,7 @@ future, if there are, a reference to the list will be included here.
 
 The current global maintainers are (in alphabetical order):
 
-Pedro Alves                     palves@redhat.com
+Pedro Alves                     pedro@palves.net
 Joel Brobecker			brobecker@adacore.com
 Kevin Buettner			kevinb@redhat.com
 Andrew Burgess			andrew.burgess@embecosm.com
@@ -286,7 +286,7 @@ the native maintainer when resolving ABI issues.
 			Michael Eager		eager@eagercon.com
 
 	mips I-IV	--target=mips-elf ,-Werror
-			Maciej W. Rozycki	macro@linux-mips.org
+			Maciej W. Rozycki	macro@orcam.me.uk
 
 	mn10300		--target=mn10300-elf broken
 			(sim/ dies with make -j)
@@ -448,7 +448,6 @@ FSF assignment and have submitted one good patch.
 
 Tankut Baris Aktemur				tankut.baris.aktemur@intel.com
 Mihails Strasuns				mihails.strasuns@intel.com
-Pedro Alves					pedro_alves@portugalmail.pt
 David Anderson					davea@sgi.com
 John David Anglin				dave.anglin@nrc-cnrc.gc.ca
 Andreas Arnez					arnez@linux.ibm.com
@@ -529,6 +528,7 @@ Matthew Green					mrg@eterna.com.au
 Matthew Gretton-Dann				matthew.gretton-dann@arm.com
 Maxim Grigoriev					maxim2405@gmail.com
 Jerome Guitton					guitton@act-europe.fr
+Alexandra Hájková				ahajkova@redhat.com
 Ben Harris					bjh21@netbsd.org
 Alan Hayward					alan.hayward@arm.com
 Bernhard Heckel					heckel_bernhard@web.de
@@ -540,6 +540,7 @@ Kazu Hirata					kazu@cs.umass.edu
 James Hogan					james.hogan@imgtec.com
 Jeff Holcomb					jeffh@redhat.com
 Stafford Horne					shorne@gmail.com
+Magne Hov					mhov@undo.io
 Don Howard					dhoward@redhat.com
 Nick Hudson					nick.hudson@dsl.pipex.com
 Martin Hunt					hunt@redhat.com
@@ -629,7 +630,7 @@ Xavier Roirand 					roirand@adacore.com
 Bob Rossi 					bob_rossi@cox.net
 Theodore A. Roth				troth@openavr.org
 Ian Roxborough					irox@redhat.com
-Maciej W. Rozycki				macro@linux-mips.org
+Maciej W. Rozycki				macro@orcam.me.uk
 Kamil Rytarowski				n54@gmx.com
 Grace Sainsbury					graces@redhat.com
 Kei Sakamoto					sakamoto.kei@renesas.com
@@ -637,6 +638,7 @@ Mark Salter					msalter@redhat.com
 Richard Sandiford				richard@codesourcery.com
 Iain Sandoe					iain@codesourcery.com
 Peter Schauer					Peter.Schauer@mytum.de
+Will Schmidt					will_schmidt@vnet.ibm.com
 Andreas Schwab					schwab@linux-m68k.org
 Thomas Schwinge					tschwinge@gnu.org
 Keith Seitz					keiths@redhat.com
@@ -648,6 +650,7 @@ Stan Shebs					stanshebs@google.com
 Joel Sherrill					joel.sherrill@oarcorp.com
 Mark Shinwell					shinwell@codesourcery.com
 Craig Silverstein				csilvers@google.com
+Lancelot Six					lsix@lancelotsix.com
 Aidan Skinner					aidan@velvet.net
 Jiri Smid					smid@suse.cz
 Andrey Smirnov					andrew.smirnov@gmail.com

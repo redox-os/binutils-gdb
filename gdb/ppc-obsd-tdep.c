@@ -137,7 +137,7 @@ ppcobsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
       unsigned long insn;
 
       if (!safe_frame_unwind_memory (this_frame, start_pc + *offset,
-				     buf, sizeof buf))
+				     {buf, sizeof buf}))
 	continue;
 
       /* Check for "li r0,SYS_sigreturn".  */
@@ -177,7 +177,7 @@ ppcobsd_sigtramp_frame_cache (struct frame_info *this_frame, void **this_cache)
 
   func = get_frame_pc (this_frame);
   func &= ~(ppcobsd_page_size - 1);
-  if (!safe_frame_unwind_memory (this_frame, func, buf, sizeof buf))
+  if (!safe_frame_unwind_memory (this_frame, func, {buf, sizeof buf}))
     return cache;
 
   /* Calculate the offset where we can find `struct sigcontext'.  We
@@ -232,6 +232,7 @@ ppcobsd_sigtramp_frame_prev_register (struct frame_info *this_frame,
 }
 
 static const struct frame_unwind ppcobsd_sigtramp_frame_unwind = {
+  "ppc openbsd sigtramp",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   ppcobsd_sigtramp_frame_this_id,

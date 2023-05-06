@@ -246,6 +246,8 @@ new_thread (struct inferior *inf, ptid_t ptid)
 struct thread_info *
 add_thread_silent (process_stratum_target *targ, ptid_t ptid)
 {
+  gdb_assert (targ != nullptr);
+
   inferior *inf = find_inferior_ptid (targ, ptid);
 
   /* We may have an old thread with the same id in the thread list.
@@ -535,6 +537,8 @@ find_thread_ptid (process_stratum_target *targ, ptid_t ptid)
 struct thread_info *
 find_thread_ptid (inferior *inf, ptid_t ptid)
 {
+  gdb_assert (inf != nullptr);
+
   for (thread_info *tp : inf->non_exited_threads ())
     if (tp->ptid == ptid)
       return tp;
@@ -633,8 +637,8 @@ any_thread_of_inferior (inferior *inf)
 {
   gdb_assert (inf->pid != 0);
 
-  /* Prefer the current thread.  */
-  if (inf == current_inferior ())
+  /* Prefer the current thread, if there's one.  */
+  if (inf == current_inferior () && inferior_ptid != null_ptid)
     return inferior_thread ();
 
   for (thread_info *tp : inf->non_exited_threads ())
@@ -1180,8 +1184,7 @@ print_thread_info_1 (struct ui_out *uiout, const char *requested_threads,
 	    }
 	  else
 	    {
-	      uiout->field_string ("target-id",
-				   thread_target_id_str (tp).c_str ());
+	      uiout->field_string ("target-id", thread_target_id_str (tp));
 	    }
 
 	  if (tp->state == THREAD_RUNNING)
@@ -1466,15 +1469,16 @@ tp_array_compar_descending (const thread_info_ref &a, const thread_info_ref &b)
   return (a->per_inf_num > b->per_inf_num);
 }
 
-/* Switch to thread THR and execute CMD.
+/* Assuming that THR is the current thread, execute CMD.
    FLAGS.QUIET controls the printing of the thread information.
-   FLAGS.CONT and FLAGS.SILENT control how to handle errors.  */
+   FLAGS.CONT and FLAGS.SILENT control how to handle errors.  Can throw an
+   exception if !FLAGS.SILENT and !FLAGS.CONT and CMD fails.  */
 
 static void
 thr_try_catch_cmd (thread_info *thr, const char *cmd, int from_tty,
 		   const qcs_flags &flags)
 {
-  switch_to_thread (thr);
+  gdb_assert (is_current_thread (thr));
 
   /* The thread header is computed before running the command since
      the command can change the inferior, which is not permitted
@@ -1972,7 +1976,7 @@ print_selected_thread_frame (struct ui_out *uiout,
 	  uiout->text ("[Switching to thread ");
 	  uiout->field_string ("new-thread-id", print_thread_id (tp));
 	  uiout->text (" (");
-	  uiout->text (target_pid_to_str (inferior_ptid).c_str ());
+	  uiout->text (target_pid_to_str (inferior_ptid));
 	  uiout->text (")]");
 	}
     }
@@ -2129,10 +2133,13 @@ Options:\n\
   c = add_info ("threads", info_threads_command, info_threads_help.c_str ());
   set_cmd_completer_handle_brkchars (c, info_threads_command_completer);
 
-  add_prefix_cmd ("thread", class_run, thread_command, _("\
+  cmd_list_element *thread_cmd
+    = add_prefix_cmd ("thread", class_run, thread_command, _("\
 Use this command to switch between threads.\n\
 The new thread ID must be currently known."),
-		  &thread_cmd_list, "thread ", 1, &cmdlist);
+		      &thread_cmd_list, 1, &cmdlist);
+
+  add_com_alias ("t", thread_cmd, class_run, 1);
 
 #define THREAD_APPLY_OPTION_HELP "\
 Prints per-inferior thread number and target system's thread id\n\
@@ -2155,7 +2162,7 @@ THREAD_APPLY_OPTION_HELP),
 
   c = add_prefix_cmd ("apply", class_run, thread_apply_command,
 		      thread_apply_help.c_str (),
-		      &thread_apply_list, "thread apply ", 1,
+		      &thread_apply_list, 1,
 		      &thread_cmd_list);
   set_cmd_completer_handle_brkchars (c, thread_apply_command_completer);
 
@@ -2198,8 +2205,6 @@ Find threads that match a regular expression.\n\
 Usage: thread find REGEXP\n\
 Will display thread ids whose name, target ID, or extra info matches REGEXP."),
 	   &thread_cmd_list);
-
-  add_com_alias ("t", "thread", class_run, 1);
 
   add_setshow_boolean_cmd ("thread-events", no_class,
 			   &print_thread_events, _("\

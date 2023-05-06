@@ -144,7 +144,7 @@ wait_for_connect (int sock, unsigned int *polls)
   else
     /* Use gdb_select here, since we have no file descriptors, and on
        Windows, plain select doesn't work in that case.  */
-    n = gdb_select (0, NULL, NULL, NULL, &t);
+    n = interruptible_select (0, NULL, NULL, NULL, &t);
 
   /* If we didn't time out, only count it as one poll.  */
   if (n > 0 || *polls < POLL_INTERVAL)
@@ -469,12 +469,12 @@ _initialize_ser_tcp ()
   add_basic_prefix_cmd ("tcp", class_maintenance, _("\
 TCP protocol specific variables.\n\
 Configure variables specific to remote TCP connections."),
-			&tcp_set_cmdlist, "set tcp ",
+			&tcp_set_cmdlist,
 			0 /* allow-unknown */, &setlist);
   add_show_prefix_cmd ("tcp", class_maintenance, _("\
 TCP protocol specific variables.\n\
 Configure variables specific to remote TCP connections."),
-		       &tcp_show_cmdlist, "show tcp ",
+		       &tcp_show_cmdlist,
 		       0 /* allow-unknown */, &showlist);
 
   add_setshow_boolean_cmd ("auto-retry", class_obscure,

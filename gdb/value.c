@@ -44,6 +44,8 @@
 #include "gdbsupport/selftest.h"
 #include "gdbsupport/array-view.h"
 #include "cli/cli-style.h"
+#include "expop.h"
+#include "inferior.h"
 
 /* Definition of a user function.  */
 struct internal_function
@@ -363,7 +365,7 @@ struct value
 struct gdbarch *
 get_value_arch (const struct value *value)
 {
-  return get_type_arch (value_type (value));
+  return value_type (value)->arch ();
 }
 
 int
@@ -1304,7 +1306,7 @@ value_ranges_copy_adjusted (struct value *dst, int dst_bit_offset,
    It is assumed the contents of DST in the [DST_OFFSET,
    DST_OFFSET+LENGTH) range are wholly available.  */
 
-void
+static void
 value_contents_copy_raw (struct value *dst, LONGEST dst_offset,
 			 struct value *src, LONGEST src_offset, LONGEST length)
 {
@@ -2006,7 +2008,7 @@ static struct internalvar *internalvars;
 static void
 init_if_undefined_command (const char* args, int from_tty)
 {
-  struct internalvar* intvar;
+  struct internalvar *intvar = nullptr;
 
   /* Parse the expression - this is taken from set_command().  */
   expression_up expr = parse_expression (args);
@@ -2014,15 +2016,24 @@ init_if_undefined_command (const char* args, int from_tty)
   /* Validate the expression.
      Was the expression an assignment?
      Or even an expression at all?  */
-  if (expr->nelts == 0 || expr->first_opcode () != BINOP_ASSIGN)
+  if (expr->first_opcode () != BINOP_ASSIGN)
     error (_("Init-if-undefined requires an assignment expression."));
 
-  /* Extract the variable from the parsed expression.
-     In the case of an assign the lvalue will be in elts[1] and elts[2].  */
-  if (expr->elts[1].opcode != OP_INTERNALVAR)
+  /* Extract the variable from the parsed expression.  */
+  expr::assign_operation *assign
+    = dynamic_cast<expr::assign_operation *> (expr->op.get ());
+  if (assign != nullptr)
+    {
+      expr::operation *lhs = assign->get_lhs ();
+      expr::internalvar_operation *ivarop
+	= dynamic_cast<expr::internalvar_operation *> (lhs);
+      if (ivarop != nullptr)
+	intvar = ivarop->get_internalvar ();
+    }
+
+  if (intvar == nullptr)
     error (_("The first parameter to init-if-undefined "
 	     "should be a GDB variable."));
-  intvar = expr->elts[2].internalvar;
 
   /* Only evaluate the expression if the lvalue is void.
      This may still fail if the expression is invalid.  */
@@ -2514,10 +2525,10 @@ void
 preserve_one_value (struct value *value, struct objfile *objfile,
 		    htab_t copied_types)
 {
-  if (TYPE_OBJFILE (value->type) == objfile)
+  if (value->type->objfile_owner () == objfile)
     value->type = copy_type_recursive (objfile, value->type, copied_types);
 
-  if (TYPE_OBJFILE (value->enclosing_type) == objfile)
+  if (value->enclosing_type->objfile_owner () == objfile)
     value->enclosing_type = copy_type_recursive (objfile,
 						 value->enclosing_type,
 						 copied_types);
@@ -2532,7 +2543,8 @@ preserve_one_internalvar (struct internalvar *var, struct objfile *objfile,
   switch (var->kind)
     {
     case INTERNALVAR_INTEGER:
-      if (var->u.integer.type && TYPE_OBJFILE (var->u.integer.type) == objfile)
+      if (var->u.integer.type
+	  && var->u.integer.type->objfile_owner () == objfile)
 	var->u.integer.type
 	  = copy_type_recursive (objfile, var->u.integer.type, copied_types);
       break;
@@ -2673,7 +2685,7 @@ value_as_long (struct value *val)
 CORE_ADDR
 value_as_address (struct value *val)
 {
-  struct gdbarch *gdbarch = get_type_arch (value_type (val));
+  struct gdbarch *gdbarch = value_type (val)->arch ();
 
   /* Assume a CORE_ADDR can fit in a LONGEST (for now).  Not sure
      whether we want this to be true eventually.  */
@@ -3148,7 +3160,8 @@ value_fn_field (struct value **arg1p, struct fn_field *f,
 
       set_value_address (v,
 	gdbarch_convert_from_func_ptr_addr
-	   (gdbarch, BMSYMBOL_VALUE_ADDRESS (msym), current_top_target ()));
+	   (gdbarch, BMSYMBOL_VALUE_ADDRESS (msym),
+	    current_inferior ()->top_target ()));
     }
 
   if (arg1p)
@@ -3943,17 +3956,17 @@ value_fetch_lazy_register (struct value *val)
       regnum = VALUE_REGNUM (val);
       gdbarch = get_frame_arch (frame);
 
-      fprintf_unfiltered (gdb_stdlog,
-			  "{ value_fetch_lazy "
-			  "(frame=%d,regnum=%d(%s),...) ",
+      string_file debug_file;
+      fprintf_unfiltered (&debug_file,
+			  "(frame=%d, regnum=%d(%s), ...) ",
 			  frame_relative_level (frame), regnum,
 			  user_reg_map_regnum_to_name (gdbarch, regnum));
 
-      fprintf_unfiltered (gdb_stdlog, "->");
+      fprintf_unfiltered (&debug_file, "->");
       if (value_optimized_out (new_val))
 	{
-	  fprintf_unfiltered (gdb_stdlog, " ");
-	  val_print_optimized_out (new_val, gdb_stdlog);
+	  fprintf_unfiltered (&debug_file, " ");
+	  val_print_optimized_out (new_val, &debug_file);
 	}
       else
 	{
@@ -3961,23 +3974,23 @@ value_fetch_lazy_register (struct value *val)
 	  const gdb_byte *buf = value_contents (new_val);
 
 	  if (VALUE_LVAL (new_val) == lval_register)
-	    fprintf_unfiltered (gdb_stdlog, " register=%d",
+	    fprintf_unfiltered (&debug_file, " register=%d",
 				VALUE_REGNUM (new_val));
 	  else if (VALUE_LVAL (new_val) == lval_memory)
-	    fprintf_unfiltered (gdb_stdlog, " address=%s",
+	    fprintf_unfiltered (&debug_file, " address=%s",
 				paddress (gdbarch,
 					  value_address (new_val)));
 	  else
-	    fprintf_unfiltered (gdb_stdlog, " computed");
+	    fprintf_unfiltered (&debug_file, " computed");
 
-	  fprintf_unfiltered (gdb_stdlog, " bytes=");
-	  fprintf_unfiltered (gdb_stdlog, "[");
+	  fprintf_unfiltered (&debug_file, " bytes=");
+	  fprintf_unfiltered (&debug_file, "[");
 	  for (i = 0; i < register_size (gdbarch, regnum); i++)
-	    fprintf_unfiltered (gdb_stdlog, "%02x", buf[i]);
-	  fprintf_unfiltered (gdb_stdlog, "]");
+	    fprintf_unfiltered (&debug_file, "%02x", buf[i]);
+	  fprintf_unfiltered (&debug_file, "]");
 	}
 
-      fprintf_unfiltered (gdb_stdlog, " }\n");
+      frame_debug_printf ("%s", debug_file.c_str ());
     }
 
   /* Dispose of the intermediate values.  This prevents
@@ -4218,7 +4231,8 @@ void _initialize_values ();
 void
 _initialize_values ()
 {
-  add_cmd ("convenience", no_class, show_convenience, _("\
+  cmd_list_element *show_convenience_cmd
+    = add_cmd ("convenience", no_class, show_convenience, _("\
 Debugger convenience (\"$foo\") variables and functions.\n\
 Convenience variables are created when you assign them values;\n\
 thus, \"set $foo=1\" gives \"$foo\" the value 1.  Values may be any type.\n\
@@ -4231,7 +4245,7 @@ A few convenience variables are given values automatically:\n\
 Convenience functions are defined via the Python API."
 #endif
 	   ), &showlist);
-  add_alias_cmd ("conv", "convenience", no_class, 1, &showlist);
+  add_alias_cmd ("conv", show_convenience_cmd, no_class, 1, &showlist);
 
   add_cmd ("values", no_set_class, show_values, _("\
 Elements of value history around item number IDX (or last ten)."),
@@ -4246,7 +4260,7 @@ VARIABLE is already initialized."));
 
   add_prefix_cmd ("function", no_class, function_command, _("\
 Placeholder command for showing help on convenience functions."),
-		  &functionlist, "function ", 0, &cmdlist);
+		  &functionlist, 0, &cmdlist);
 
   add_internal_function ("_isvoid", _("\
 Check whether an expression is void.\n\

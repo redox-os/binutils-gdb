@@ -139,7 +139,7 @@ sparc64nbsd_sigcontext_saved_regs (CORE_ADDR sigcontext_addr,
 
 	addr = saved_regs[SPARC_I7_REGNUM].addr ();
 	i7 = get_frame_memory_unsigned (this_frame, addr, 8);
-	trad_frame_set_value (saved_regs, SPARC_I7_REGNUM, i7 ^ wcookie);
+	saved_regs[SPARC_I7_REGNUM].set_value (i7 ^ wcookie);
       }
   }
 
@@ -225,6 +225,7 @@ sparc64nbsd_sigtramp_frame_sniffer (const struct frame_unwind *self,
 
 static const struct frame_unwind sparc64nbsd_sigcontext_frame_unwind =
 {
+  "sparc64 netbsd sigcontext",
   SIGTRAMP_FRAME,
   default_frame_unwind_stop_reason,
   sparc64nbsd_sigcontext_frame_this_id,

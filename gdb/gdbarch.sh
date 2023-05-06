@@ -605,6 +605,31 @@ m;CORE_ADDR;addr_bits_remove;CORE_ADDR addr;addr;;core_addr_identity;;0
 # additional data associated with the address.
 v;int;significant_addr_bit;;;;;;0
 
+# Return a string representation of the memory tag TAG.
+m;std::string;memtag_to_string;struct value *tag;tag;;default_memtag_to_string;;0
+
+# Return true if ADDRESS contains a tag and false otherwise.
+m;bool;tagged_address_p;struct value *address;address;;default_tagged_address_p;;0
+
+# Return true if the tag from ADDRESS matches the memory tag for that
+# particular address.  Return false otherwise.
+m;bool;memtag_matches_p;struct value *address;address;;default_memtag_matches_p;;0
+
+# Set the tags of type TAG_TYPE, for the memory address range
+# [ADDRESS, ADDRESS + LENGTH) to TAGS.
+# Return true if successful and false otherwise.
+m;bool;set_memtags;struct value *address, size_t length, const gdb::byte_vector \&tags, memtag_type tag_type;address, length, tags, tag_type;;default_set_memtags;;0
+
+# Return the tag of type TAG_TYPE associated with the memory address ADDRESS,
+# assuming ADDRESS is tagged.
+m;struct value *;get_memtag;struct value *address, memtag_type tag_type;address, tag_type;;default_get_memtag;;0
+
+# memtag_granule_size is the size of the allocation tag granule, for
+# architectures that support memory tagging.
+# This is 0 for architectures that do not support memory tagging.
+# For a non-zero value, this represents the number of bytes of memory per tag.
+v;CORE_ADDR;memtag_granule_size;;;;;;0
+
 # FIXME/cagney/2001-01-18: This should be split in two.  A target method that
 # indicates if the target needs software single step.  An ISA method to
 # implement it.
@@ -994,7 +1019,7 @@ M;int;stap_is_single_operand;const char *s;s
 # if the token was not recognized as a special token (in this case, returning
 # zero means that the special parser is deferring the parsing to the generic
 # parser), and should advance the buffer pointer (p->arg).
-M;int;stap_parse_special_token;struct stap_parse_info *p;p
+M;expr::operation_up;stap_parse_special_token;struct stap_parse_info *p;p
 
 # Perform arch-dependent adjustments to a register name.
 #
@@ -1025,7 +1050,7 @@ M;std::string;stap_adjust_register;struct stap_parse_info *p, const std::string 
 
 # The expression to compute the NARTGth+1 argument to a DTrace USDT probe.
 # NARG must be >= 0.
-M;void;dtrace_parse_probe_argument;struct expr_builder *builder, int narg;builder, narg
+M;expr::operation_up;dtrace_parse_probe_argument;int narg;narg
 
 # True if the given ADDR does not contain the instruction sequence
 # corresponding to a disabled DTrace is-enabled probe.
@@ -1362,6 +1387,18 @@ enum function_call_return_method
   return_method_struct,
 };
 
+enum class memtag_type
+{
+  /* Logical tag, the tag that is stored in unused bits of a pointer to a
+     virtual address.  */
+  logical = 0,
+
+  /* Allocation tag, the tag that is associated with every granule of memory in
+     the physical address space.  Allocation tags are used to validate memory
+     accesses via pointers containing logical tags.  */
+  allocation,
+};
+
 EOF
 
 # function typedef's
@@ -1496,24 +1533,22 @@ struct gdbarch_list
 
 struct gdbarch_info
 {
-  /* Use default: NULL (ZERO).  */
-  const struct bfd_arch_info *bfd_arch_info;
+  gdbarch_info ()
+    /* Ensure the union is zero-initialized.  Relies on the fact that there's
+       no member larger than TDESC_DATA.  */
+    : tdesc_data ()
+  {}
 
-  /* Use default: BFD_ENDIAN_UNKNOWN (NB: is not ZERO).  */
-  enum bfd_endian byte_order;
+  const struct bfd_arch_info *bfd_arch_info = nullptr;
 
-  enum bfd_endian byte_order_for_code;
+  enum bfd_endian byte_order = BFD_ENDIAN_UNKNOWN;
 
-  /* Use default: NULL (ZERO).  */
-  bfd *abfd;
+  enum bfd_endian byte_order_for_code = BFD_ENDIAN_UNKNOWN;
 
-  /* Use default: NULL (ZERO).  */
+  bfd *abfd = nullptr;
+
   union
     {
-      /* Architecture-specific information.  The generic form for targets
-	 that have extra requirements.  */
-      struct gdbarch_tdep_info *tdep_info;
-
       /* Architecture-specific target description data.  Numerous targets
 	 need only this, so give them an easy way to hold it.  */
       struct tdesc_arch_data *tdesc_data;
@@ -1524,11 +1559,9 @@ struct gdbarch_info
       int *id;
     };
 
-  /* Use default: GDB_OSABI_UNINITIALIZED (-1).  */
-  enum gdb_osabi osabi;
+  enum gdb_osabi osabi = GDB_OSABI_UNKNOWN;
 
-  /* Use default: NULL (ZERO).  */
-  const struct target_desc *target_desc;
+  const struct target_desc *target_desc = nullptr;
 };
 
 typedef struct gdbarch *(gdbarch_init_ftype) (struct gdbarch_info info, struct gdbarch_list *arches);
@@ -1604,8 +1637,8 @@ extern int gdbarch_update_p (struct gdbarch_info info);
 
 /* Helper function.  Find an architecture matching info.
 
-   INFO should be initialized using gdbarch_info_init, relevant fields
-   set, and then finished using gdbarch_info_fill.
+   INFO should have relevant fields set, and then finished using
+   gdbarch_info_fill.
 
    Returns the corresponding architecture, or NULL if no matching
    architecture was found.  */
@@ -2198,7 +2231,7 @@ struct gdbarch_data_registry
   struct gdbarch_data_registration *registrations;
 };
 
-struct gdbarch_data_registry gdbarch_data_registry =
+static struct gdbarch_data_registry gdbarch_data_registry =
 {
   0, NULL,
 };
@@ -2442,9 +2475,6 @@ gdbarch_find_by_info (struct gdbarch_info info)
       fprintf_unfiltered (gdb_stdlog,
 			  "gdbarch_find_by_info: info.abfd %s\n",
 			  host_address_to_string (info.abfd));
-      fprintf_unfiltered (gdb_stdlog,
-			  "gdbarch_find_by_info: info.tdep_info %s\n",
-			  host_address_to_string (info.tdep_info));
     }
 
   /* Find the tdep code that knows about this architecture.  */

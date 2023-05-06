@@ -30,6 +30,7 @@
 #include "observable.h"
 #include "xml-syscall.h"
 #include "cli/cli-style.h"
+#include "cli/cli-decode.h"
 
 /* An instance of this type is used to represent a syscall catchpoint.
    A breakpoint is really of this type iff its ops pointer points to
@@ -390,6 +391,8 @@ catch_syscall_split_args (const char *arg)
       syscall_number = (int) strtol (cur_name, &endptr, 0);
       if (*endptr == '\0')
 	{
+	  if (syscall_number < 0)
+	    error (_("Unknown syscall number '%d'."), syscall_number);
 	  get_syscall_by_number (gdbarch, syscall_number, &s);
 	  result.push_back (s.number);
 	}
@@ -437,7 +440,7 @@ catch_syscall_command_1 (const char *arg, int from_tty,
     error (_("The feature 'catch syscall' is not supported on \
 this architecture yet."));
 
-  tempflag = get_cmd_context (command) == CATCH_TEMPORARY;
+  tempflag = command->context () == CATCH_TEMPORARY;
 
   arg = skip_spaces (arg);
 
@@ -605,7 +608,8 @@ _initialize_break_catch_syscall ()
 {
   initialize_syscall_catchpoint_ops ();
 
-  gdb::observers::inferior_exit.attach (clear_syscall_counts);
+  gdb::observers::inferior_exit.attach (clear_syscall_counts,
+					"break-catch-syscall");
 
   add_catch_command ("syscall", _("\
 Catch system calls by their names, groups and/or numbers.\n\

@@ -1,4 +1,8 @@
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
+#include "sim-signal.h"
 #include "v850_sim.h"
 #include "simops.h"
 
@@ -7,22 +11,12 @@
 #ifdef HAVE_UTIME_H
 #include <utime.h>
 #endif
-
-#ifdef HAVE_TIME_H
 #include <time.h>
-#endif
-
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-
-#ifdef HAVE_STRING_H
+#include <stdlib.h>
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
 
 #include "targ-vals.h"
 
@@ -1647,7 +1641,7 @@ OP_10007E0 (void)
 	    char *path = fetch_str (simulator, PARM1);
 	    char **argv = fetch_argv (simulator, PARM2);
 	    char **envp = fetch_argv (simulator, PARM3);
-	    RETVAL = execve (path, argv, envp);
+	    RETVAL = execve (path, (void *)argv, (void *)envp);
 	    free (path);
 	    freeargv (argv);
 	    freeargv (envp);
@@ -1663,7 +1657,7 @@ OP_10007E0 (void)
 	  {
 	    char *path = fetch_str (simulator, PARM1);
 	    char **argv = fetch_argv (simulator, PARM2);
-	    RETVAL = execv (path, argv);
+	    RETVAL = execv (path, (void *)argv);
 	    free (path);
 	    freeargv (argv);
 	    RETERR = errno;
@@ -1866,7 +1860,6 @@ OP_10007E0 (void)
 	  break;
 #endif
 
-#ifdef HAVE_CHOWN
 #ifdef TARGET_SYS_chown
 	case TARGET_SYS_chown:
 	  {
@@ -1876,7 +1869,6 @@ OP_10007E0 (void)
 	    RETERR = errno;
 	  }
 	  break;
-#endif
 #endif
 
 #if HAVE_CHMOD
@@ -1915,7 +1907,7 @@ OP_10007E0 (void)
 	    store_mem (PARM1 + 4, 4, tms.tms_stime);
 	    store_mem (PARM1 + 8, 4, tms.tms_cutime);
 	    store_mem (PARM1 + 12, 4, tms.tms_cstime);
-	    reterr = errno;
+	    RETERR = errno;
 	    break;
 	  }
 #endif

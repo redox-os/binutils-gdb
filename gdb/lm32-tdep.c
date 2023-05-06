@@ -28,9 +28,6 @@
 #include "remote.h"
 #include "gdbcore.h"
 #include "gdb/sim-lm32.h"
-#include "gdb/callback.h"
-#include "gdb/remote-sim.h"
-#include "sim-regno.h"
 #include "arch-utils.h"
 #include "regcache.h"
 #include "trad-frame.h"
@@ -417,7 +414,7 @@ lm32_frame_cache (struct frame_info *this_frame, void **this_prologue_cache)
   /* Convert callee save offsets into addresses.  */
   for (i = 0; i < gdbarch_num_regs (get_frame_arch (this_frame)) - 1; i++)
     {
-      if (trad_frame_addr_p (info->saved_regs, i))
+      if (info->saved_regs[i].is_addr ())
 	info->saved_regs[i].set_addr (this_base + info->saved_regs[i].addr ());
     }
 
@@ -429,7 +426,7 @@ lm32_frame_cache (struct frame_info *this_frame, void **this_prologue_cache)
 
   /* The previous frame's SP needed to be computed.  Save the computed
      value.  */
-  trad_frame_set_value (info->saved_regs, SIM_LM32_SP_REGNUM, prev_sp);
+  info->saved_regs[SIM_LM32_SP_REGNUM].set_value (prev_sp);
 
   return info;
 }
@@ -458,6 +455,7 @@ lm32_frame_prev_register (struct frame_info *this_frame,
 }
 
 static const struct frame_unwind lm32_frame_unwind = {
+  "lm32 prologue",
   NORMAL_FRAME,
   default_frame_unwind_stop_reason,
   lm32_frame_this_id,

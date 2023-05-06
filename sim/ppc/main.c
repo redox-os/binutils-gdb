@@ -30,25 +30,14 @@
 #include "events.h" /* FIXME: psim should provide the interface */
 
 #include "bfd.h"
-#include "gdb/callback.h"
-#include "gdb/remote-sim.h"
+#include "sim/callback.h"
+#include "sim/sim.h"
 
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
-
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-
 #include <errno.h>
 
 #if !defined(O_NDELAY) || !defined(F_GETFL) || !defined(F_SETFL)
@@ -225,6 +214,8 @@ sim_io_flush_stdoutput(void)
   }
 }
 
+/* Glue to use sim-fpu module.  */
+
 void
 sim_io_error (SIM_DESC sd, const char *msg, ...)
 {
@@ -262,7 +253,7 @@ cntrl_c(int sig)
 
 
 int
-main(int argc, char **argv)
+main(int argc, char * const *argv)
 {
   const char *name_of_file;
   char *arg_;

@@ -16,21 +16,16 @@
    You should have received a copy of the GNU General Public License
    along with this program.  If not, see <http://www.gnu.org/licenses/>.  */
 
+/* This must come before any other includes.  */
+#include "defs.h"
+
 #include "sim-main.h"
 #include "sim-options.h"
 #include "libiberty.h"
 #include "bfd.h"
 
-#ifdef HAVE_STRING_H
 #include <string.h>
-#else
-#ifdef HAVE_STRINGS_H
-#include <strings.h>
-#endif
-#endif
-#ifdef HAVE_STDLIB_H
 #include <stdlib.h>
-#endif
 
 static void free_state (SIM_DESC);
 
@@ -155,6 +150,8 @@ or1k_option_handler (SIM_DESC sd, sim_cpu *cpu, int opt, char *arg,
   return SIM_RC_FAIL;
 }
 
+extern const SIM_MACH * const or1k_sim_machs[];
+
 /* Create an instance of the simulator.  */
 
 SIM_DESC
@@ -165,8 +162,13 @@ sim_open (SIM_OPEN_KIND kind, host_callback *callback, struct bfd *abfd,
   char c;
   int i;
 
+  /* Set default options before parsing user options.  */
+  STATE_MACHS (sd) = or1k_sim_machs;
+  STATE_MODEL_NAME (sd) = "or1200";
+  current_target_byte_order = BFD_ENDIAN_BIG;
+
   /* The cpu data is kept in a separately allocated chunk of memory.  */
-  if (sim_cpu_alloc_all (sd, 1, cgen_cpu_max_extra_bytes ()) != SIM_RC_OK)
+  if (sim_cpu_alloc_all (sd, 1) != SIM_RC_OK)
     {
       free_state (sd);
       return 0;
@@ -242,10 +244,6 @@ sim_open (SIM_OPEN_KIND kind, host_callback *callback, struct bfd *abfd,
       }
     or1k_cgen_init_dis (cd);
   }
-
-  /* Initialize various cgen things not done by common framework.
-     Must be done after or1k_cgen_cpu_open.  */
-  cgen_init (sd);
 
   /* Do some final OpenRISC sim specific initializations.  */
   for (c = 0; c < MAX_NR_PROCESSORS; ++c)
