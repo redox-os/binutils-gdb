@@ -2231,6 +2231,7 @@ de-stage3:
 
 doc/asconfig.texi: doc/$(CONFIG).texi doc/$(am__dirstamp)
 	$(AM_V_at)rm -f doc/asconfig.texi
+	@$(MKDIR_P) doc
 	$(AM_V_GEN)cp $(srcdir)/doc/$(CONFIG).texi doc/asconfig.texi
 	$(AM_V_at)chmod u+w doc/asconfig.texi
 

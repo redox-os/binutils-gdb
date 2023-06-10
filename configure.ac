@@ -1333,6 +1333,9 @@ case "${target}" in
   loongarch*-*-*)
     noconfigdirs="$noconfigdirs gprof"
     ;;
+  *-*-redox)
+    noconfigdirs="$noconfigdirs readline gdb"
+    ;;
 esac
 
 # If we aren't building newlib, then don't build libgloss, since libgloss
