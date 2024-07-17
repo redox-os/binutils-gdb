@@ -39,14 +39,22 @@ SDATA_START_SYMBOLS="${CREATE_SHLIB-__SDATA_BEGIN__ = .;}
 INITIAL_READONLY_SECTIONS=".interp         : { *(.interp) } ${CREATE_PIE-${INITIAL_READONLY_SECTIONS}}"
 INITIAL_READONLY_SECTIONS="${RELOCATING+${CREATE_SHLIB-${INITIAL_READONLY_SECTIONS}}}"
 
+case "$target" in
+  riscv*-redox)
+    # Don't assign __global_pointer$
+    OTHER_END_SYMBOLS="${CREATE_SHLIB-__BSS_END__ = .;}"
+    ;;
+  *)
 # We must cover as much of sdata as possible if it exists.  If sdata+bss is
 # smaller than 0x1000 then we should start from bss end to cover as much of
 # the program as possible.  But we can't allow gp to cover any of rodata, as
 # the address of variables in rodata may change during relaxation, so we start
 # from data in that case.
-OTHER_END_SYMBOLS="${CREATE_SHLIB-__BSS_END__ = .;
+    OTHER_END_SYMBOLS="${CREATE_SHLIB-__BSS_END__ = .;
     __global_pointer$ = MIN(__SDATA_BEGIN__ + 0x800,
 		            MAX(__DATA_BEGIN__ + 0x800, __BSS_END__ - 0x800));}"
+    ;;
+esac
 
 # Put .got before .data
 DATA_GOT=" "
